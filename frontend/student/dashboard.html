@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-custom">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/student/dashboard.html">&#x1F4DD; AI Evaluator</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link active" href="/student/dashboard.html">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/student/submit.html">Submit Answer</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/student/results.html">My Results</a></li>
+                </ul>
+                <div class="d-flex align-items-center">
+                    <div class="user-dropdown" id="user-dropdown">
+                        <div class="user-dropdown-trigger" onclick="toggleUserMenu()">
+                            <span class="user-avatar" id="user-avatar"></span>
+                            <span class="user-name-text" id="user-name"></span>
+                        </div>
+                        <div class="user-dropdown-menu" id="user-menu"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Content -->
+    <div class="dashboard-container">
+        <div class="page-header">
+            <h1>Welcome, <span id="welcome-name"></span></h1>
+            <p>View your assignments and submit answers for evaluation</p>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="row g-3 mb-4" id="stats-row">
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-assignments">-</div>
+                    <div class="stat-label">Available Assignments</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card success">
+                    <div class="stat-value" id="stat-submitted">-</div>
+                    <div class="stat-label">Submissions</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card info">
+                    <div class="stat-value" id="stat-avg-score">-</div>
+                    <div class="stat-label">Average Score</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Available Assignments -->
+        <div class="content-card">
+            <h5>Available Assignments</h5>
+            <div class="table-responsive">
+                <table class="table table-custom" id="assignments-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Subject</th>
+                            <th>Total Marks</th>
+                            <th>Created</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assignments-body">
+                        <tr><td colspan="5" class="text-center text-muted py-4">Loading assignments...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Help & Support</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="help-section">
+                        <h6>📚 How to Submit Assignments</h6>
+                        <p>Go to "Submit Answer" page, select an assignment, and upload your answer PDF file.</p>
+                    </div>
+                    <div class="help-section">
+                        <h6>📊 Viewing Results</h6>
+                        <p>Check "My Results" to see your evaluation scores, feedback, and improvement suggestions.</p>
+                    </div>
+                    <div class="help-section">
+                        <h6>🎨 Theme Settings</h6>
+                        <p>Use the settings icon to switch between Light, Dark, or System theme.</p>
+                    </div>
+                    <div class="help-section">
+                        <h6>❓ Need More Help?</h6>
+                        <p>Contact your teacher or system administrator for additional support.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Modal -->
+    <div class="modal fade" id="accountModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Account Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Name</label>
+                        <div class="fw-bold" id="account-name"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Email</label>
+                        <div class="fw-bold" id="account-email"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Role</label>
+                        <div class="fw-bold text-capitalize" id="account-role"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/student.js"></script>
+    <script>
+        const user = requireAuth('student');
+        if (user) {
+            document.getElementById('user-name').textContent = user.name;
+            document.getElementById('welcome-name').textContent = user.name.split(' ')[0];
+            document.getElementById('user-avatar').textContent = user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+            initUserDropdown();
+            loadDashboard();
+        }
+    </script>
+</body>
+</html>
