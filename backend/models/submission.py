@@ -26,8 +26,10 @@ class SubmissionModel:
             'error_message': '',
             'submitted_at': datetime.now(timezone.utc),
             'evaluated_at': None,
-            'manual_check': False,
-            'teacher_comments': '',
+            'faculty_reviewed': False,
+            'faculty_marks': {},
+            'edited_answers': {},
+            'faculty_comments': '',
         }
         result = self.collection.insert_one(submission)
         submission['_id'] = result.inserted_id
@@ -52,17 +54,20 @@ class SubmissionModel:
             }}
         )
 
-    def update_manual_marks(self, submission_id, question_results, total_marks, teacher_comments=""):
-        """Update marks manually by teacher."""
+    def update_faculty_marks(self, submission_id, faculty_marks, edited_answers=None, faculty_comments=""):
+        """Update marks manually by faculty."""
+        update_data = {
+            'faculty_marks': faculty_marks,
+            'faculty_comments': faculty_comments,
+            'faculty_reviewed': True,
+            'status': 'evaluated'
+        }
+        if edited_answers is not None:
+            update_data['edited_answers'] = edited_answers
+            
         self.collection.update_one(
             {'_id': ObjectId(submission_id)},
-            {'$set': {
-                'question_results': question_results,
-                'marks_obtained': total_marks,
-                'teacher_comments': teacher_comments,
-                'manual_check': True,
-                'status': 'evaluated'
-            }}
+            {'$set': update_data}
         )
 
     def set_status(self, submission_id, status, error_message=None):
@@ -148,6 +153,8 @@ class SubmissionModel:
             'error_message': doc.get('error_message', ''),
             'submitted_at': doc['submitted_at'].isoformat() if doc.get('submitted_at') else '',
             'evaluated_at': doc['evaluated_at'].isoformat() if doc.get('evaluated_at') else None,
-            'manual_check': doc.get('manual_check', False),
-            'teacher_comments': doc.get('teacher_comments', ''),
+            'faculty_reviewed': doc.get('faculty_reviewed', False),
+            'faculty_marks': doc.get('faculty_marks', {}),
+            'edited_answers': doc.get('edited_answers', {}),
+            'faculty_comments': doc.get('faculty_comments', ''),
         }

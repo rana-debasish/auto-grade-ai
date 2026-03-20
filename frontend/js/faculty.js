@@ -1,17 +1,17 @@
 /* ================================================================
-   Teacher Module — Dashboard, Assignment Management, Reports
+   faculty Module — Dashboard, Assignment Management, Reports
    ================================================================ */
 
 // ---- Skeleton Loaders ----
 
-function showTeacherStatSkeletons() {
+function showfacultyStatSkeletons() {
     ['stat-assignments', 'stat-submissions', 'stat-evaluated', 'stat-avg'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<div class="skeleton skeleton-stat"></div>';
     });
 }
 
-function showTeacherTableSkeleton(tbody, cols = 6, rows = 5) {
+function showfacultyTableSkeleton(tbody, cols = 6, rows = 5) {
     if (!tbody) return;
     let html = '';
     for (let i = 0; i < rows; i++) {
@@ -48,7 +48,7 @@ function showReportsSkeletons(container) {
 
 // ---- Animate Value ----
 
-function animateTeacherValue(elementId, endValue, duration = 500) {
+function animatefacultyValue(elementId, endValue, duration = 500) {
     const el = document.getElementById(elementId);
     if (!el) return;
     
@@ -75,36 +75,36 @@ function animateTeacherValue(elementId, endValue, duration = 500) {
 
 // ---- Dashboard ----
 
-let _teacherRefreshTimer = null;
-let _teacherFirstLoad = true;
+let _facultyRefreshTimer = null;
+let _facultyFirstLoad = true;
 
-async function loadTeacherDashboard() {
+async function loadfacultyDashboard() {
     // Show skeletons on first load
-    if (_teacherFirstLoad) {
-        showTeacherStatSkeletons();
-        showTeacherTableSkeleton(document.getElementById('submissions-body'), 6, 5);
-        _teacherFirstLoad = false;
+    if (_facultyFirstLoad) {
+        showfacultyStatSkeletons();
+        showfacultyTableSkeleton(document.getElementById('submissions-body'), 6, 5);
+        _facultyFirstLoad = false;
     }
     
     try {
         const [subData, reportData] = await Promise.all([
-            apiRequest('/teacher/submissions'),
-            apiRequest('/teacher/reports'),
+            apiRequest('/faculty/submissions'),
+            apiRequest('/faculty/reports'),
         ]);
 
         const submissions = subData.submissions || [];
         const reports = reportData.reports || [];
 
         // Stats with animation
-        animateTeacherValue('stat-assignments', reports.length);
-        animateTeacherValue('stat-submissions', submissions.length);
+        animatefacultyValue('stat-assignments', reports.length);
+        animatefacultyValue('stat-submissions', submissions.length);
 
         const evaluated = submissions.filter(s => s.status === 'evaluated');
-        animateTeacherValue('stat-evaluated', evaluated.length);
+        animatefacultyValue('stat-evaluated', evaluated.length);
 
         if (evaluated.length > 0) {
             const avg = evaluated.reduce((sum, s) => sum + s.similarity_score, 0) / evaluated.length;
-            animateTeacherValue('stat-avg', (avg * 100).toFixed(1) + '%');
+            animatefacultyValue('stat-avg', (avg * 100).toFixed(1) + '%');
         } else {
             document.getElementById('stat-avg').textContent = 'N/A';
         }
@@ -112,11 +112,11 @@ async function loadTeacherDashboard() {
         // Auto-refresh if any submissions are still processing
         const hasPending = submissions.some(s => s.status === 'processing' || s.status === 'pending');
         if (hasPending) {
-            clearTimeout(_teacherRefreshTimer); // Clear existing to avoid duplicates
-            _teacherRefreshTimer = setTimeout(() => loadTeacherDashboard(), 3000);
-        } else if (!hasPending && _teacherRefreshTimer) {
-            clearTimeout(_teacherRefreshTimer);
-            _teacherRefreshTimer = null;
+            clearTimeout(_facultyRefreshTimer); // Clear existing to avoid duplicates
+            _facultyRefreshTimer = setTimeout(() => loadfacultyDashboard(), 3000);
+        } else if (!hasPending && _facultyRefreshTimer) {
+            clearTimeout(_facultyRefreshTimer);
+            _facultyRefreshTimer = null;
         }
 
         // Submissions table
@@ -161,7 +161,7 @@ async function loadTeacherDashboard() {
         }).join('');
 
     } catch (err) {
-        console.error('Teacher dashboard error:', err);
+        console.error('faculty dashboard error:', err);
         showToast('Failed to load dashboard data', 'error');
     }
 }
@@ -179,7 +179,7 @@ function setupAssignmentForm() {
         btn.textContent = 'Creating...';
 
         try {
-            const data = await apiRequest('/teacher/assignment', {
+            const data = await apiRequest('/faculty/assignment', {
                 method: 'POST',
                 body: JSON.stringify({
                     title: document.getElementById('title').value,
@@ -210,7 +210,7 @@ async function loadMyAssignments() {
     if (!container) return;
 
     try {
-        const data = await apiRequest('/teacher/assignments');
+        const data = await apiRequest('/faculty/assignments');
         const assignments = data.assignments || [];
 
         if (assignments.length === 0) {
@@ -246,7 +246,7 @@ async function loadReports() {
     }
 
     try {
-        const data = await apiRequest('/teacher/reports');
+        const data = await apiRequest('/faculty/reports');
         const reports = data.reports || [];
 
         if (reports.length === 0) {
@@ -256,7 +256,7 @@ async function loadReports() {
                         <div class="empty-state-icon">📊</div>
                         <div class="empty-state-title">No assignments yet</div>
                         <div class="empty-state-text">Create your first assignment to start receiving submissions.</div>
-                        <a href="/teacher/upload_model.html" class="btn btn-primary">Create Assignment</a>
+                        <a href="/faculty/upload_model.html" class="btn btn-primary">Create Assignment</a>
                     </div>
                 </div>`;
             return;
@@ -345,7 +345,7 @@ async function loadAssignmentSubmissions(assignmentId) {
     if (!body) return;
     
     try {
-        const data = await apiRequest(`/teacher/submissions?assignment_id=${assignmentId}`);
+        const data = await apiRequest(`/faculty/submissions?assignment_id=${assignmentId}`);
         const submissions = data.submissions || [];
         _reportSubmissions[assignmentId] = submissions;
         renderSubmissionsTable(assignmentId, submissions);
@@ -387,10 +387,10 @@ function renderSubmissionsTable(assignmentId, submissions) {
                             </td>
                             <td>${s.status === 'evaluated' ? (s.similarity_score * 100).toFixed(1) + '%' : '-'}</td>
                             <td>${s.status === 'evaluated' ? s.marks_obtained + '/' + s.total_marks : '-'}</td>
-                            <td>${s.manual_check ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>
+                            <td>${s.faculty_reviewed ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>
                             <td>
                                 ${s.status === 'evaluated' ? `
-                                <a href="/teacher/edit_marks.html?submission_id=${s.id}" class="btn btn-sm btn-outline-primary">
+                                <a href="/faculty/edit_evaluation.html?submission_id=${s.id}" class="btn btn-sm btn-outline-primary">
                                     <svg width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
                                       <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
                                       <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/>
@@ -405,9 +405,9 @@ function renderSubmissionsTable(assignmentId, submissions) {
     `;
 }
 
-// ---- Manual Evaluation (Edit Marks) ----
+// ---- New Evaluation UI (Split View) ----
 
-async function setupEditMarksPage() {
+async function setupNewEvaluationUI() {
     const params = new URLSearchParams(window.location.search);
     const submissionId = params.get('submission_id');
     
@@ -416,150 +416,126 @@ async function setupEditMarksPage() {
         return;
     }
     
-    const container = document.getElementById('questions-container');
-    const studentInfo = document.getElementById('student-info');
-    const subStatus = document.getElementById('sub-status');
-    const aiMarksTotal = document.getElementById('ai-marks-total');
-    const aiSimTotal = document.getElementById('ai-sim-total');
+    const tbody = document.getElementById('marking-tbody');
+    const pdfViewer = document.getElementById('pdf-viewer-frame');
+    const studentDisplay = document.getElementById('student-name-display');
+    const totalMarksSummary = document.getElementById('total-marks-summary');
+    const aiTotalMarksEl = document.getElementById('ai-total-marks');
+    const commentsArea = document.getElementById('faculty-comments');
 
     try {
-        const data = await apiRequest(`/teacher/submission/${submissionId}`);
-        const submission = data.submission;
-        const assignment = data.assignment;
-
-        studentInfo.textContent = `Student: ${submission.student_name} | Assignment: ${assignment.title}`;
-        subStatus.textContent = submission.status.toUpperCase();
-        subStatus.className = `badge bg-${submission.status === 'evaluated' ? 'success' : 'secondary'}`;
-        aiMarksTotal.textContent = `${submission.marks_obtained}/${assignment.total_marks}`;
-        aiSimTotal.textContent = `${(submission.similarity_score * 100).toFixed(1)}% Score`;
+        const data = await apiRequest(`/faculty/evaluation/${submissionId}`);
         
-        document.getElementById('teacher-comments').value = submission.teacher_comments || '';
+        studentDisplay.textContent = `Submission ID: ${data.submission_id}`;
+        pdfViewer.src = data.pdf_url || '';
+        commentsArea.value = data.faculty_comments || '';
+        
+        const questions = data.questions || [];
+        const results = data.results || [];
+        const facultyMarks = data.faculty_marks || {};
+        const editedAnswers = data.edited_answers || {};
 
-        const results = submission.question_results || [];
-        container.innerHTML = assignment.questions.map((q, idx) => {
+        let aiTotal = 0;
+        let maxTotal = 0;
+        
+        tbody.innerHTML = questions.map((q, idx) => {
             const res = results.find(r => r.question_index === idx) || {};
-            const q_num = q.original_num || (idx + 1);
-            
+            const q_num = idx + 1;
+            const max = q.marks || 0;
+            const ai_mark = res.ai_marks || 0;
+            const faculty_mark = facultyMarks[idx] ?? ai_mark;
+            const student_ans = editedAnswers[idx] ?? (res.extracted_answer || "");
+
+            aiTotal += ai_mark;
+            maxTotal += max;
+
             return `
-                <div class="question-edit-card row g-3" data-idx="${idx}">
-
-    <!-- LEFT SIDE : Answers -->
-    <div class="col-md-7">
-
-        <label class="small fw-bold mb-1">🧑‍🎓 Student Answer Extracted:</label>
-        <div class="answer-box student-answer">
-            ${escapeHtml(res.extracted_answer || ("Answer not clearly found for Question " + q_num + "."))}
-        </div>
-
-        <label class="small fw-bold mb-1">📘 Model Answer (Reference):</label>
-        <div class="answer-box model-answer">
-            ${escapeHtml(q.model_answer)}
-        </div>
-
-    </div>
-
-    <!-- RIGHT SIDE : AI Evaluation -->
-    <div class="col-md-5">
-
-        <div class="content-card p-3 shadow-sm">
-
-            <div class="mb-3 d-flex justify-content-between align-items-center">
-                <span class="small fw-bold">AI Similarity:</span>
-                <span class="ai-badge">${(res.similarity_score * 100 || 0).toFixed(1)}%</span>
-            </div>
-
-            <div class="mb-3 d-flex justify-content-between align-items-center">
-                <span class="small fw-bold">AI Suggestion:</span>
-                <span class="fw-bold text-primary">${res.ai_marks || 0} / ${q.marks} Marks</span>
-            </div>
-
-            <hr>
-
-            <label class="form-label fw-bold">Assign Marks:</label>
-
-            <div class="input-group">
-                <input type="number"
-                       step="0.5"
-                       class="form-control form-control-lg edit-q-marks"
-                       value="${res.marks_obtained ?? 0}"
-                       min="0"
-                       max="${q.marks}"
-                       onchange="updateManualTotalMarks()">
-
-                <span class="input-group-text">/ ${q.marks}</span>
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
+                <tr class="q-row" data-idx="${idx}">
+                    <td class="q-num">${q_num}</td>
+                    <td class="marks-col">
+                        <div class="marks-input-wrapper">
+                            <input type="number" 
+                                   step="0.5" 
+                                   class="form-control marks-input" 
+                                   data-idx="${idx}" 
+                                   value="${faculty_mark}" 
+                                   min="0" 
+                                   max="${max}">
+                            <div class="ai-label">AI Sug: ${ai_mark}</div>
+                        </div>
+                    </td>
+                    <td class="max-marks-col">${max}</td>
+                </tr>
             `;
         }).join('');
 
-        updateManualTotalMarks();
-        // attach input listeners so arrows update total immediately
-        document.querySelectorAll('.edit-q-marks').forEach((input, i) => {
-    const marks = Number(input.value);
-        });
-        
-        document.getElementById('edit-marks-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('save-btn');
-            btn.disabled = true;
-            btn.textContent = 'Saving Changes...';
+        aiTotalMarksEl.textContent = `${aiTotal.toFixed(1)} / ${maxTotal}`;
+        updateNewTotalMarksAcrossUI(maxTotal);
 
-            const question_results = [];
-            // iterate through each mark input; wrapper may not exist in older code
-            document.querySelectorAll('.edit-q-marks').forEach((input, i) => {
-                const marks = parseFloat(input.value) || 0;
-                // try to get question index from parent card data attribute
-                let idx;
-                const card = input.closest('.question-edit-card');
-                if (card && card.dataset.idx !== undefined) {
-                    idx = parseInt(card.dataset.idx);
-                } else {
-                    idx = i; // fallback to order
-                }
-                const existing = results.find(r => r.question_index === idx) || {};
-                question_results.push({
-                    ...existing,
-                    question_index: idx,
-                    marks_obtained: marks
-                });
+        // Add listeners for total marks updates
+        tbody.querySelectorAll('.marks-input').forEach(input => {
+            input.addEventListener('input', () => updateNewTotalMarksAcrossUI(maxTotal));
+        });
+
+        // Form Submission
+        document.getElementById('evaluation-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('save-evaluation-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            const finalFacultyMarks = {};
+            const finalEditedAnswers = {};
+
+            tbody.querySelectorAll('.marks-input').forEach(input => {
+                finalFacultyMarks[input.dataset.idx] = parseFloat(input.value) || 0;
+            });
+
+            tbody.querySelectorAll('.student-ans-textarea').forEach(area => {
+                finalEditedAnswers[area.dataset.idx] = area.value.trim();
             });
 
             try {
-                // debug: show what will be submitted
-                console.log('submitting manual results', question_results);
-                await apiRequest(`/teacher/edit-marks/${submissionId}`, {
+                await apiRequest('/faculty/evaluation/update', {
                     method: 'POST',
                     body: JSON.stringify({
-                        question_results,
-                        teacher_comments: document.getElementById('teacher-comments').value
+                        submission_id: submissionId,
+                        faculty_marks: finalFacultyMarks,
+                        edited_answers: finalEditedAnswers,
+                        faculty_comments: commentsArea.value.trim()
                     })
                 });
-                showToast('Marks updated successfully!', 'success');
-                setTimeout(() => window.location.href = '/teacher/reports.html', 1500);
+
+                showToast('Evaluation updated successfully!', 'success');
+                setTimeout(() => history.back(), 1500);
+
             } catch (err) {
                 showToast(err.message, 'error');
                 btn.disabled = false;
-                btn.textContent = 'Save Manual Evaluation';
+                btn.textContent = 'Save Changes';
             }
         };
 
     } catch (err) {
-        container.innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
+        showToast('Failed to load evaluation details: ' + err.message, 'error');
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error: ${err.message}</td></tr>`;
     }
 }
 
-function updateManualTotalMarks() {
-    let total = 0;
-    document.querySelectorAll('.edit-q-marks').forEach(input => {
-        total += Number(input.value) || 0;
+function updateNewTotalMarksAcrossUI(maxTotal) {
+    let currentTotal = 0;
+    document.querySelectorAll('.marks-input').forEach(input => {
+        currentTotal += parseFloat(input.value) || 0;
     });
-    const display = document.getElementById('total-marks-display');
-    if (display) display.textContent = total;
+    const summaryEl = document.getElementById('total-marks-summary');
+    if (summaryEl) {
+        summaryEl.textContent = `Total: ${currentTotal.toFixed(1)} / ${maxTotal}`;
+    }
+}
+
+// ---- Legacy Support ----
+async function setupEditMarksPage() {
+    setupNewEvaluationUI();
 }
 
 async function downloadReportExcel(assignmentId, assignmentTitle) {
@@ -570,7 +546,7 @@ async function downloadReportExcel(assignmentId, assignmentTitle) {
     
     try {
         if (!_reportSubmissions[assignmentId]) {
-            const data = await apiRequest(`/teacher/submissions?assignment_id=${assignmentId}`);
+            const data = await apiRequest(`/faculty/submissions?assignment_id=${assignmentId}`);
             _reportSubmissions[assignmentId] = data.submissions || [];
         }
         
@@ -588,27 +564,19 @@ async function downloadReportExcel(assignmentId, assignmentTitle) {
             'Similarity Score (%)': s.status === 'evaluated' ? (s.similarity_score * 100).toFixed(2) : 'N/A',
             'Marks Obtained': s.status === 'evaluated' ? s.marks_obtained : 'N/A',
             'Total Marks': s.total_marks,
-            'Manual Check': s.manual_check ? 'Yes' : 'No',
+            'Faculty Reviewed': s.faculty_reviewed ? 'Yes' : 'No',
             'Submitted At': s.submitted_at ? new Date(s.submitted_at).toLocaleString() : 'N/A'
         }));
         
         const ws = XLSX.utils.json_to_sheet(excelData);
         const wb = XLSX.utils.book_new();
-        
-        ws['!cols'] = [
-            { wch: 6 },  { wch: 25 }, { wch: 12 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 20 },
-        ];
-        
         XLSX.utils.book_append_sheet(wb, ws, 'Submissions');
         
-        const safeTitle = assignmentTitle.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
-        const filename = `${safeTitle}_submissions_${new Date().toISOString().split('T')[0]}.xlsx`;
-        
+        const filename = `report_${assignmentId}.xlsx`;
         XLSX.writeFile(wb, filename);
-        showToast(`Downloaded ${submissions.length} submission(s)`, 'success');
-        
+        showToast('Excel downloaded', 'success');
     } catch (err) {
-        showToast('Failed to export: ' + err.message, 'error');
+        showToast('Export failed: ' + err.message, 'error');
     }
 }
 

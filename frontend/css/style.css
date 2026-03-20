@@ -124,8 +124,40 @@
     background: rgba(255, 255, 255, 0.05);
 }
 
-[data-theme="dark"] .empty-state-icon {
-    opacity: 0.7;
+[data-theme="dark"] .content-card {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .table-custom thead th {
+    background: var(--primary-dark);
+}
+
+[data-theme="dark"] .table-custom tbody td {
+    color: var(--text-primary);
+    border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .table-custom tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="dark"] .admin-tab {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .admin-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+[data-theme="dark"] .admin-search {
+    background: var(--bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .admin-search input {
+    color: var(--text-primary);
 }
 
 * {
@@ -689,11 +721,11 @@ body {
 .table-custom tbody td {
     padding: 0.75rem 1rem;
     vertical-align: middle;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .table-custom tbody tr:hover {
-    background-color: #f8f9ff;
+    background-color: rgba(67, 97, 238, 0.03);
 }
 
 /* ---- Badges ---- */

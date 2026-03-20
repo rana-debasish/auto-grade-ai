@@ -5,12 +5,12 @@ An intelligent system that evaluates student answer scripts using AI — combini
 ## ✨ Features
 
 - **Multi-format Upload** — Supports PDF, PNG, JPG, JPEG, TXT, DOCX files
-- **AI-Powered Evaluation** — TF-IDF vectorization, fuzzy matching, and optional Ollama RAG
-- **OCR Text Extraction** — PyMuPDF for digital PDFs, PaddleOCR for scanned documents
-- **Detailed Feedback** — Per-question analysis with keyword matching, strengths, and suggestions
-- **Role-Based Access** — Students, Teachers, and Admin dashboards
-- **Smart Grading** — Automatic marks calculation with letter grades
-- **Reports & Export** — Teachers can download Excel reports
+- **AI-Powered Evaluation** — Google Gemini API for extraction and grading
+- **OCR Text Extraction** — PyMuPDF for digital documents
+- **Split-View Grading** — Review PDF and assign marks side-by-side
+- **Detailed Feedback** — Per-question marks, justification, and correctness
+- **Role-Based Access** — Students, Faculty, and Admin dashboards
+- **Reports & Export** — Faculty can download Excel reports
 - **Theme Support** — Light, Dark, and System theme modes
 - **Memory Optimized** — Designed for deployment on Render free tier (512MB RAM)
 
@@ -20,7 +20,7 @@ An intelligent system that evaluates student answer scripts using AI — combini
 ┌──────────────────────────────────────────────┐
 │                  Frontend                     │
 │   HTML + CSS + JavaScript (SPA)               │
-│   Login │ Student │ Teacher │ Admin           │
+│   Login │ Student │ Faculty │ Admin            │
 └──────────────────┬───────────────────────────┘
                    │ REST API (JWT Auth)
 ┌──────────────────┴───────────────────────────┐
@@ -29,8 +29,7 @@ An intelligent system that evaluates student answer scripts using AI — combini
 │                                              │
 │   ┌────────────┐  ┌──────────────────────┐   │
 │   │ OCR        │  │ Evaluation Engine    │   │
-│   │ PyMuPDF    │  │ TF-IDF + Fuzzy Match │   │
-│   │ PaddleOCR  │  │ Ollama RAG (opt.)    │   │
+│   │ PyMuPDF    │  │ Google Gemini API    │   │
 │   └────────────┘  └──────────────────────┘   │
 └──────────────────┬───────────────────────────┘
                    │
@@ -47,41 +46,36 @@ An intelligent system that evaluates student answer scripts using AI — combini
 │   ├── config.py              # Environment-based configuration
 │   ├── seed.py                # Admin user seeding script
 │   ├── models/
-│   │   ├── user.py            # User model (students, teachers, admin)
+│   │   ├── user.py            # User model (students, faculty, admin)
 │   │   ├── assignment.py      # Assignment model (questions + model answers)
 │   │   └── submission.py      # Submission model (student submissions + results)
 │   ├── routes/
 │   │   ├── auth.py            # Authentication (login, register)
 │   │   ├── student.py         # Student endpoints (submit, view results)
-│   │   ├── teacher.py         # Teacher endpoints (create assignments, reports)
+│   │   ├── faculty.py         # Faculty endpoints (create assignments, reviews)
 │   │   └── admin.py           # Admin endpoints (manage users, stats)
 │   ├── services/
-│   │   ├── evaluation_engine.py   # TF-IDF + fuzzy similarity scoring
-│   │   ├── feedback_generator.py  # Detailed feedback generation
-│   │   ├── marks_calculator.py    # Score → marks/grade conversion
-│   │   ├── nlp_preprocessing.py   # Text cleaning, tokenization, parsing
-│   │   ├── ocr_service.py         # Text extraction (PDF, Image, DOCX, TXT)
-│   │   ├── ocr_worker.py          # PaddleOCR subprocess worker
-│   │   ├── image_processing.py    # Image preprocessing for OCR
-│   │   └── ollama_service.py      # Ollama LLM integration (optional RAG)
+│   │   ├── gemini_service.py      # Google Gemini API integration
+│   │   ├── nlp_preprocessing.py   # Text cleaning and parsing
+│   │   └── ocr_service.py         # Text extraction from documents
 │   ├── uploads/               # Temporary file storage
 │   └── requirements.txt       # Python dependencies
 ├── frontend/
 │   ├── index.html             # Login/Register page
 │   ├── student.html           # Student dashboard
-│   ├── teacher.html           # Teacher dashboard
+│   ├── faculty/               # Faculty dashboard & tools
+│   │   ├── dashboard.html     # Assignment list
+│   │   ├── edit_evaluation.html # Split-view grading tool
+│   │   └── reports.html       # Analytics
 │   ├── admin.html             # Admin dashboard
 │   ├── css/                   # Stylesheets
 │   └── js/
 │       ├── auth.js            # Authentication logic
 │       ├── student.js         # Student interface
-│       ├── teacher.js         # Teacher interface
+│       ├── faculty.js         # Faculty interface
 │       └── admin.js           # Admin interface
-├── .env.example               # Environment template (safe for GitHub)
-├── .gitignore                 # Git ignore rules
-├── Procfile                   # Render deployment command
-├── render.yaml                # Render service configuration
-├── runtime.txt                # Python version
+├── start_with_ngrok.py        # Launcher with ngrok tunnel
+├── .env.example               # Environment template
 ├── Run_on_Colab.ipynb         # Google Colab notebook
 └── README.md                  # This file
 ```

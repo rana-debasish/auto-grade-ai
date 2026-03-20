@@ -140,7 +140,8 @@ def _run_evaluation_async(app, submission_id, file_path, ext, assignment, total_
 
                     if raw_text:
                         raw_text = raw_text[:Config.MAX_EXTRACTED_CHARS]
-                    else:
+                    
+                    if not raw_text and ext not in ["pdf", "png", "jpg", "jpeg"]:
                         raise ValueError(
                             "No readable text could be extracted from the submitted file. "
                             "Please upload a text-based PDF, DOCX, TXT, or a clearer image."
@@ -150,151 +151,95 @@ def _run_evaluation_async(app, submission_id, file_path, ext, assignment, total_
                     _log(f"Text extracted: {len(raw_text)} chars")
 
                     # ------------------------------------------------
-                    # STEP 2: SEGMENT STUDENT ANSWERS
+                    # STEP 2: GEMINI AI EVALUATION
                     # ------------------------------------------------
 
-                    _progress(65, 'Analyzing and scoring each question...')
+                    _progress(70, 'AI Analysis in progress...')
 
                     questions = assignment.get('questions', [])[:25]
-
                     if not questions:
                         raise ValueError("Assignment has no questions configured for evaluation.")
 
-                    student_segments = segment_student_answers(raw_text, questions)
+                    from services.gemini_service import evaluate_with_gemini
+                    
+                    # Call Gemini with both extracted text (if any) and the file itself
+                    gemini_result = evaluate_with_gemini(raw_text, questions, file_path=file_path, file_type=ext)
+                    
+                    if not gemini_result:
+                        # Fallback or error if Gemini fails
+                        raise ValueError("AI Evaluation failed. Please try again.")
 
-                    # ================= DEBUG PRINT =================
-                    print("\n===== SEGMENTED STUDENT ANSWERS =====")
-                    print(student_segments)
-                    print("=====================================\n")
-                    # =================================================
+                    extracted_answers = gemini_result.get('extracted_answers', [])
+                    suggested_marks = gemini_result.get('suggested_marks', [])
+                    reasoning = gemini_result.get('reasoning', '')
 
                     question_results = []
-                    total_similarity = 0
                     total_marks_obtained = 0
 
                     for idx, q in enumerate(questions):
-
                         q_marks = q.get('marks', 0)
-                        model_ans = q.get('model_answer', '')
-                        q_num = q.get('original_num')
-
-                        answer_for_q = student_segments.get(str(q_num), '')
-
-                        if not answer_for_q and len(questions) == 1:
-                            answer_for_q = raw_text
-
-                        # ================= DEBUG PRINT =================
-
-                        print("\n----------------------------------------")
-                        print(f"QUESTION {q_num}")
-
-                        print("\nSTUDENT ANSWER:")
-                        print(answer_for_q)
-
-                        print("\nMODEL ANSWER:")
-                        print(model_ans)
-
-                        # =================================================
-
-                        student_processed = preprocess_text(answer_for_q)
-                        model_processed = preprocess_text(model_ans)
-
-                        from services.evaluation_engine import evaluate_answer, keyword_match_score
-                        from services.ollama_service import generate_rag_evaluation
-                        import json
-
-                        sim_score = evaluate_answer(student_processed, model_processed)
+                        q_num = idx + 1 # Assuming sequential numbering for simplicity if not provided
                         
-                        # --- Calculate keywords first so RAG can enhance them ---
-                        matched, missing, keyword_overlap = keyword_match_score(
-                           student_processed,
-                            model_processed
-                        )
+                        student_ans = ""
+                        if idx < len(extracted_answers):
+                            student_ans = extracted_answers[idx]
+                        
+                        marks = 0
+                        if idx < len(suggested_marks):
+                            try:
+                                marks = float(suggested_marks[idx])
+                            except (ValueError, TypeError):
+                                marks = 0
 
-                        # --- NEW: RAG-based refinement using Ollama ---
-                        rag_feedback = ""
-                        try:
-                            rag_response = generate_rag_evaluation(
-                                answer_for_q, 
-                                model_ans, 
-                                q.get('question_text_original', '')
-                            )
-                            if rag_response:
-                                # Ollama might return a string that is not valid JSON if it includes markdown
-                                if "```json" in rag_response:
-                                    rag_response = rag_response.split("```json")[1].split("```")[0].strip()
-                                
-                                rag_data = json.loads(rag_response)
-                                rag_score = rag_data.get('score', sim_score)
-                                rag_feedback = rag_data.get('feedback', '')
-                                
-                                # Blending the scores: 60% algorithmic (TF-IDF/Fuzzy), 40% AI conceptual
-                                sim_score = (sim_score * 0.6) + (float(rag_score) * 0.4)
-                                
-                                # Use RAG identified keywords if available to enhance the list
-                                if 'key_points_covered' in rag_data:
-                                    rag_matched = rag_data['key_points_covered']
-                                    if isinstance(rag_matched, list):
-                                        matched = list(set(matched + rag_matched))
-                                if 'missing_points' in rag_data:
-                                    rag_missing = rag_data['missing_points']
-                                    if isinstance(rag_missing, list):
-                                        missing = list(set(missing + rag_missing))
-                        except Exception as e:
-                            logging.warning("[EVAL] RAG refinement skipped: %s", e)
-
-                        keyword_percent = round(keyword_overlap * 100, 1)
-
-                        # ================= DEBUG PRINT =================
-                        print("\nSIMILARITY SCORE:", sim_score)
-                        print("----------------------------------------\n")
-                        # =================================================
-
-                        marks = calculate_marks(sim_score, q_marks)
-
-                        display_answer = answer_for_q.strip()
-
-                        if not display_answer:
-                            display_answer = f"Answer not clearly found for Question {q_num}."
-
+                        # Ensure marks don't exceed max marks
+                        marks = min(marks, q_marks)
+                        
                         question_results.append({
                             'question_index': idx,
                             'question_num': q_num,
                             'question_text': q.get('question_text', ''),
-                            'extracted_answer': display_answer,
-                            'rag_feedback': rag_feedback,
-                            'similarity_score': sim_score,
-                            'keyword_score': keyword_percent,
-                            'matched_keywords': matched,
-                            'missing_keywords': missing,
-                            'marks_obtained': marks,
+                            'extracted_answer': student_ans or f"Answer not found for Question {q_num}.",
                             'ai_marks': marks,
-                            'total_marks': q_marks
+                            'marks_obtained': marks,
+                            'total_marks': q_marks,
+                            'similarity_score': marks / q_marks if q_marks > 0 else 0
                         })
 
-                        total_similarity += sim_score
                         total_marks_obtained += marks
 
-                        pct = 65 + int(((idx + 1) / len(questions)) * 20)
-                        _progress(pct, f'Scored question {idx + 1}/{len(questions)}...')
-
-                    avg_similarity = total_similarity / len(questions) if questions else 0
-
+                    avg_similarity = (total_marks_obtained / total_marks) if total_marks > 0 else 0
+                    
                     # ------------------------------------------------
-                    # STEP 3: GENERATE FEEDBACK
+                    # STEP 3: CONSTRUCT FEEDBACK
                     # ------------------------------------------------
+                    _progress(92, 'Finalizing feedback...')
+                    
+                    from services.marks_calculator import get_grade
+                    grade = get_grade(total_marks_obtained, total_marks)
+                    
+                    # Keywords: use AI-detected keywords or fallback to extraction
+                    ai_keywords = gemini_result.get('matched_keywords', [])
+                    if not ai_keywords and raw_text:
+                         from services.nlp_preprocessing import extract_keywords
+                         ai_keywords = extract_keywords(raw_text)
 
-                    _progress(92, 'Generating overall feedback...')
-
-                    ref_model_answer = "\n".join([q['model_answer'] for q in questions])
-
-                    feedback = generate_feedback(
-                        raw_text,
-                        ref_model_answer,
-                        avg_similarity,
-                        total_marks_obtained,
-                        total_marks
-                    )
+                    # Build the complex feedback object that the frontend expects
+                    feedback = {
+                        'grade': grade,
+                        'similarity_percentage': round(avg_similarity * 100, 1),
+                        'marks_obtained': total_marks_obtained,
+                        'total_marks': total_marks,
+                        'keyword_analysis': {
+                            'matched_keywords': ai_keywords,
+                            'missing_keywords': gemini_result.get('weaknesses', [])[:5],
+                            'keyword_overlap': len(ai_keywords) * 5, # Simulated percentage or 0
+                            'total_model_keywords': len(ai_keywords) + 2
+                        },
+                        'strengths': gemini_result.get('strengths', ["Good attempt."]),
+                        'weaknesses': gemini_result.get('weaknesses', ["Room for more detail."]),
+                        'suggestions': gemini_result.get('suggestions', ["Provide more specific examples."]),
+                        'reasoning': reasoning
+                    }
 
                    # ------------------------------------------------
                     # BUILD CLEAN STUDENT TEXT

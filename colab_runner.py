@@ -111,6 +111,11 @@ print("\n🌐 ngrok Configuration")
 print("   Get a free token at: https://dashboard.ngrok.com/get-started/your-authtoken")
 NGROK_TOKEN = getpass("Enter your ngrok auth token: ")
 
+# Gemini API
+print("\n🤖 Gemini Integration")
+print("   Get your free API key at: https://aistudio.google.com/app/apikey")
+GEMINI_KEY = getpass("Enter your Gemini API Key: ")
+
 # Generate a secure JWT secret
 JWT_SECRET = secrets.token_hex(32)
 
@@ -125,7 +130,7 @@ MAX_CONTENT_LENGTH=8388608
 MAX_CONCURRENT_EVALUATIONS=1
 MAX_PDF_PAGES=10
 MAX_EXTRACTED_CHARS=20000
-OLLAMA_ENABLED=0
+GEMINI_API_KEY={GEMINI_KEY}
 NGROK_AUTH_TOKEN={NGROK_TOKEN}
 """
 

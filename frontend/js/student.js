@@ -83,7 +83,7 @@ async function loadDashboard() {
                         <div class="empty-state">
                             <div class="empty-state-icon">📚</div>
                             <div class="empty-state-title">No assignments yet</div>
-                            <div class="empty-state-text">Check back later for new assignments from your teachers.</div>
+                            <div class="empty-state-text">Check back later for new assignments from your facultys.</div>
                         </div>
                     </td>
                 </tr>`;

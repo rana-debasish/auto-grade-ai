@@ -5,7 +5,7 @@
 // ---- Skeleton Loaders ----
 
 function showAdminStatSkeletons() {
-    ['stat-users', 'stat-students', 'stat-teachers', 'stat-assignments',
+    ['stat-users', 'stat-students', 'stat-facultys', 'stat-assignments',
      'stat-submissions', 'stat-evaluated', 'stat-pending', 'stat-errors', 'stat-avg-sim'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<div class="skeleton skeleton-stat"></div>';
@@ -73,7 +73,7 @@ async function loadAdminDashboard() {
         // Animate stats
         animateAdminValue('stat-users', s.total_users);
         animateAdminValue('stat-students', s.total_students);
-        animateAdminValue('stat-teachers', s.total_teachers);
+        animateAdminValue('stat-facultys', s.total_facultys);
         animateAdminValue('stat-assignments', s.total_assignments);
         animateAdminValue('stat-submissions', s.total_submissions);
         animateAdminValue('stat-evaluated', s.evaluated_submissions);
@@ -171,7 +171,7 @@ async function deleteUser(userId, userName) {
 
 function getRoleBadge(role) {
     if (role === 'admin') return 'danger';
-    if (role === 'teacher') return 'success';
+    if (role === 'faculty') return 'success';
     return 'primary';
 }
 
@@ -244,7 +244,7 @@ function filterAssignments() {
     const filtered = _allAssignments.filter(a => 
         a.title.toLowerCase().includes(search) || 
         a.subject.toLowerCase().includes(search) ||
-        (a.teacher_name && a.teacher_name.toLowerCase().includes(search))
+        (a.faculty_name && a.faculty_name.toLowerCase().includes(search))
     );
     
     renderAssignmentsTable(filtered);
@@ -263,15 +263,15 @@ function filterSubmissions() {
     renderSubmissionsTable(filtered);
 }
 
-// ---- Load Teacher Filter ----
+// ---- Load faculty Filter ----
 
-async function loadTeacherFilter() {
+async function loadfacultyFilter() {
     try {
-        const data = await apiRequest('/admin/users?role=teacher');
-        const teachers = data.users || [];
-        const select = document.getElementById('teacher-filter');
+        const data = await apiRequest('/admin/users?role=faculty');
+        const facultys = data.users || [];
+        const select = document.getElementById('faculty-filter');
         if (select) {
-            teachers.forEach(t => {
+            facultys.forEach(t => {
                 const option = document.createElement('option');
                 option.value = t.id;
                 option.textContent = t.name;
@@ -279,7 +279,7 @@ async function loadTeacherFilter() {
             });
         }
     } catch (err) {
-        console.error('Failed to load teachers:', err);
+        console.error('Failed to load facultys:', err);
     }
 }
 
@@ -291,8 +291,8 @@ async function loadAllAssignments() {
     
     showUsersTableSkeleton(tbody, 5);
     
-    const teacherId = document.getElementById('teacher-filter')?.value || '';
-    const url = teacherId ? `/admin/assignments?teacher_id=${teacherId}` : '/admin/assignments';
+    const facultyId = document.getElementById('faculty-filter')?.value || '';
+    const url = facultyId ? `/admin/assignments?faculty_id=${facultyId}` : '/admin/assignments';
     
     try {
         const data = await apiRequest(url);
@@ -326,7 +326,7 @@ function renderAssignmentsTable(assignments) {
         <tr style="animation: cardSlideUp 0.3s ease-out ${idx * 0.05}s both">
             <td><strong>${escapeHtml(a.title)}</strong></td>
             <td>${escapeHtml(a.subject)}</td>
-            <td>${escapeHtml(a.teacher_name || 'Unknown')}</td>
+            <td>${escapeHtml(a.faculty_name || 'Unknown')}</td>
             <td>${a.total_marks}</td>
             <td>${a.submission_count || 0}</td>
             <td>${formatDate(a.created_at)}</td>

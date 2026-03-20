@@ -275,7 +275,7 @@ function logout() {
 function redirectToDashboard(role) {
     const routes = {
         student: '/student/dashboard.html',
-        teacher: '/teacher/dashboard.html',
+        faculty: '/faculty/dashboard.html',
         admin: '/admin/dashboard.html',
     };
     window.location.href = routes[role] || '/';

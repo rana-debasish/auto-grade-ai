@@ -29,8 +29,8 @@ def register():
     if len(password) < 6:
         return jsonify({'error': 'Password must be at least 6 characters'}), 400
 
-    if role not in ('student', 'teacher'):
-        return jsonify({'error': 'Role must be student or teacher'}), 400
+    if role not in ('student', 'faculty', 'teacher'): # Keep teacher for legacy
+        return jsonify({'error': 'Role must be student or faculty'}), 400
 
     from models.user import UserModel
     user_model = UserModel(_get_db())

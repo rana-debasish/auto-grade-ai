@@ -1,4 +1,4 @@
-"""User model — handles CRUD for students, teachers, and admins."""
+"""User model — handles CRUD for students, faculty, and admins."""
 
 from datetime import datetime, timezone
 
@@ -15,7 +15,7 @@ class UserModel:
         if self.collection.find_one({'email': email}):
             return None, 'Email already registered'
 
-        if role not in ('student', 'teacher', 'admin'):
+        if role not in ('student', 'faculty', 'admin'):
             return None, 'Invalid role'
 
         hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -86,7 +86,7 @@ class UserModel:
             'id': str(user['_id']),
             'name': user['name'],
             'email': user['email'],
-            'role': user['role'],
+            'role': 'faculty' if user['role'] == 'teacher' else user['role'],
             'created_at': user['created_at'].isoformat(),
             'is_active': user.get('is_active', True),
         }

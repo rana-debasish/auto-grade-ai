@@ -100,7 +100,7 @@ def system_stats():
     stats = {
         'total_users': user_model.count(),
         'total_students': user_model.count(role='student'),
-        'total_teachers': user_model.count(role='teacher'),
+        'total_faculty': user_model.count(role='faculty'),
         'total_assignments': assignment_model.count(),
         'total_submissions': submission_model.count(),
         'evaluated_submissions': submission_model.count(status='evaluated'),
@@ -121,7 +121,7 @@ def list_all_assignments():
     if err:
         return err
 
-    teacher_id = request.args.get('teacher_id')
+    faculty_id = request.args.get('faculty_id')
 
     from models.assignment import AssignmentModel
     from models.submission import SubmissionModel
@@ -132,15 +132,15 @@ def list_all_assignments():
     submission_model = SubmissionModel(db)
     user_model = UserModel(db)
 
-    if teacher_id:
-        assignments = assignment_model.get_all(teacher_id=teacher_id, active_only=False)
+    if faculty_id:
+        assignments = assignment_model.get_all(faculty_id=faculty_id, active_only=False)
     else:
         assignments = assignment_model.get_all(active_only=False)
 
-    # Enrich with teacher name and submission count
+    # Enrich with faculty name and submission count
     for a in assignments:
-        teacher = user_model.get_by_id(a['teacher_id'])
-        a['teacher_name'] = teacher['name'] if teacher else 'Unknown'
+        faculty = user_model.get_by_id(a['faculty_id'])
+        a['faculty_name'] = faculty['name'] if faculty else 'Unknown'
         subs = submission_model.get_by_assignment(a['id'])
         a['submission_count'] = len(subs)
 

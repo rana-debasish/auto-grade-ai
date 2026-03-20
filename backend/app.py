@@ -91,7 +91,7 @@ try:
     db['submissions'].create_index('student_id')
     db['submissions'].create_index('assignment_id')
     db['submissions'].create_index('status')
-    db['assignments'].create_index('teacher_id')
+    db['assignments'].create_index('faculty_id')
     logging.info("[DB] Indexes ensured on users, submissions, assignments")
 except Exception as e:
     logging.warning(f"[DB] Index creation warning: {e}")
@@ -105,12 +105,12 @@ os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
 
 from routes.auth import auth_bp
 from routes.student import student_bp
-from routes.teacher import teacher_bp
+from routes.faculty import faculty_bp
 from routes.admin import admin_bp
 
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(student_bp, url_prefix='/api/student')
-app.register_blueprint(teacher_bp, url_prefix='/api/teacher')
+app.register_blueprint(faculty_bp, url_prefix='/api/faculty')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
 # ---------------------------------------------------------------------------
@@ -139,6 +139,12 @@ def health_check():
         force_gc()  # Try to free memory
     
     return jsonify(status), 200
+
+
+@app.route('/api/uploads/<filename>')
+def serve_upload(filename):
+    """Serve uploaded files (PDFs, images)."""
+    return send_from_directory(Config.UPLOAD_FOLDER, filename)
 
 
 @app.route('/<path:path>')

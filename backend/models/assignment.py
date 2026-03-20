@@ -1,4 +1,4 @@
-"""Assignment model — stores assignments created by teachers with model answers."""
+"""Assignment model — stores assignments created by faculty with model answers."""
 
 from datetime import datetime, timezone
 
@@ -9,7 +9,7 @@ class AssignmentModel:
     def __init__(self, db):
         self.collection = db['assignments']
 
-    def create(self, teacher_id, title, subject, questions, total_marks=100):
+    def create(self, faculty_id, title, subject, questions, total_marks=100):
         """
         Create a new assignment.
         
@@ -17,7 +17,7 @@ class AssignmentModel:
             questions: List of { 'question_text': str, 'model_answer': str, 'marks': int }
         """
         assignment = {
-            'teacher_id': teacher_id,
+            'faculty_id': faculty_id,
             'title': title,
             'subject': subject,
             'questions': questions,
@@ -33,10 +33,10 @@ class AssignmentModel:
         doc = self.collection.find_one({'_id': ObjectId(assignment_id)})
         return self._serialize(doc) if doc else None
 
-    def get_all(self, teacher_id=None, active_only=True):
+    def get_all(self, faculty_id=None, active_only=True):
         query = {}
-        if teacher_id:
-            query['teacher_id'] = teacher_id
+        if faculty_id:
+            query['faculty_id'] = faculty_id
         if active_only:
             query['is_active'] = True
         docs = self.collection.find(query).sort('created_at', -1)
@@ -63,7 +63,7 @@ class AssignmentModel:
             return None
         return {
             'id': str(doc['_id']),
-            'teacher_id': doc['teacher_id'],
+            'faculty_id': doc.get('faculty_id') or doc.get('teacher_id'),
             'title': doc['title'],
             'subject': doc['subject'],
             'questions': doc.get('questions', []),
