@@ -16,7 +16,7 @@ else:
     logging.warning("GEMINI_API_KEY not found in environment variables.")
     model = None
 
-def evaluate_with_gemini(student_content, questions, file_path=None, file_type=None):
+def evaluate_with_gemini(student_content, questions, file_path=None, file_type=None, marking_scheme=None):
     """
     Evaluates student's answer against a list of questions using Google Gemini.
     Can take either extracted text or a file path (multimodal).
@@ -26,6 +26,7 @@ def evaluate_with_gemini(student_content, questions, file_path=None, file_type=N
         questions (list): List of { 'question_text': str, 'model_answer': str, 'marks': int }
         file_path (str): Optional path to the PDF/Image file for multimodal extraction
         file_type (str): Optional file extension (pdf, png, jpg, jpeg)
+        marking_scheme (str): Optional grading rubric/marking scheme provided by faculty
         
     Returns:
         dict: {
@@ -45,10 +46,12 @@ def evaluate_with_gemini(student_content, questions, file_path=None, file_type=N
         questions_formatted += f"Model Answer {idx+1}: {q['model_answer']}\n"
         questions_formatted += f"Max Marks {idx+1}: {q['marks']}\n\n"
 
+    marking_scheme_formatted = f"\n### Marking Scheme / Rubric:\n{marking_scheme}\n" if marking_scheme else ""
+
     prompt = f"""
     You are an expert academic evaluator. You are provided with a student's answer script 
     and a list of questions with their model answers.
-
+    {marking_scheme_formatted}
     Your task is to:
     1. Identify and extract the student's answer for each question from the provided content.
     2. Evaluate each extracted answer against the model answer with high precision.

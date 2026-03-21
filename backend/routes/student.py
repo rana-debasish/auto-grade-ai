@@ -69,234 +69,6 @@ def _allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
 
 
-def _run_evaluation_async(app, submission_id, file_path, ext, assignment, total_marks):
-
-    def _evaluate():
-
-        semaphore = _get_semaphore()
-
-        if not semaphore.acquire(blocking=True, timeout=300):
-            print(f"[EVAL] Timeout waiting for semaphore: {submission_id}")
-            return
-
-        try:
-            with app.app_context():
-
-                from models.submission import SubmissionModel
-                submission_model = SubmissionModel(_get_db())
-
-                def _progress(pct, step):
-                    submission_model.set_progress(submission_id, pct, step)
-
-                try:
-                    from services.image_processing import preprocess_image
-                    from services.ocr_service import extract_text, extract_text_from_file
-                    from services.nlp_preprocessing import preprocess_text
-                    from services.marks_calculator import calculate_marks
-                    from services.feedback_generator import generate_feedback
-                    from services.nlp_preprocessing import segment_student_answers
-
-                    t_start = time.time()
-
-                    # Create a debug log file in /tmp
-                    log_file = f"/tmp/eval_{submission_id}.log"
-                    with open(log_file, "w") as f_log:
-                        f_log.write(f"Starting evaluation for {submission_id}\n")
-
-                    def _log(msg):
-                        with open(log_file, "a") as f_log:
-                            f_log.write(f"{msg}\n")
-                        print(f"[EVAL-DEBUG] {msg}")
-
-                    _log(f"Project directory: {os.getcwd()}")
-                    _log(f"File: {file_path} ({ext})")
-
-                    # ------------------------------------------------
-                    # STEP 1: TEXT EXTRACTION
-                    # ------------------------------------------------
-
-                    _progress(5, 'Extracting text from document...')
-                    raw_text = extract_text_from_file(file_path) or ""
-
-                    # Clean OCR garbage text
-                    raw_text = clean_ocr_text(raw_text)
-
-                    # Only run image preprocessing fallback for actual images.
-                    if not raw_text and ext in ["png", "jpg", "jpeg"]:
-
-                        print("[EVAL] Direct extraction failed. Running OCR fallback")
-
-                        _progress(10, 'Preprocessing image for OCR...')
-                        processed_image = preprocess_image(file_path)
-
-                        _progress(30, 'Performing OCR extraction...')
-                        raw_text = extract_text(processed_image) or ""
-
-                        # CLEAN OCR TEXT AFTER FALLBACK
-                        raw_text = clean_ocr_text(raw_text)
-
-                        del processed_image
-                        gc.collect()
-
-                    if raw_text:
-                        raw_text = raw_text[:Config.MAX_EXTRACTED_CHARS]
-                    
-                    if not raw_text and ext not in ["pdf", "png", "jpg", "jpeg"]:
-                        raise ValueError(
-                            "No readable text could be extracted from the submitted file. "
-                            "Please upload a text-based PDF, DOCX, TXT, or a clearer image."
-                        )
-
-                    _progress(60, 'Text extracted')
-                    _log(f"Text extracted: {len(raw_text)} chars")
-
-                    # ------------------------------------------------
-                    # STEP 2: GEMINI AI EVALUATION
-                    # ------------------------------------------------
-
-                    _progress(70, 'AI Analysis in progress...')
-
-                    questions = assignment.get('questions', [])[:25]
-                    if not questions:
-                        raise ValueError("Assignment has no questions configured for evaluation.")
-
-                    from services.gemini_service import evaluate_with_gemini
-                    
-                    # Call Gemini with both extracted text (if any) and the file itself
-                    gemini_result = evaluate_with_gemini(raw_text, questions, file_path=file_path, file_type=ext)
-                    
-                    if not gemini_result:
-                        # Fallback or error if Gemini fails
-                        raise ValueError("AI Evaluation failed. Please try again.")
-
-                    extracted_answers = gemini_result.get('extracted_answers', [])
-                    suggested_marks = gemini_result.get('suggested_marks', [])
-                    reasoning = gemini_result.get('reasoning', '')
-
-                    question_results = []
-                    total_marks_obtained = 0
-
-                    for idx, q in enumerate(questions):
-                        q_marks = q.get('marks', 0)
-                        q_num = idx + 1 # Assuming sequential numbering for simplicity if not provided
-                        
-                        student_ans = ""
-                        if idx < len(extracted_answers):
-                            student_ans = extracted_answers[idx]
-                        
-                        marks = 0
-                        if idx < len(suggested_marks):
-                            try:
-                                marks = float(suggested_marks[idx])
-                            except (ValueError, TypeError):
-                                marks = 0
-
-                        # Ensure marks don't exceed max marks
-                        marks = min(marks, q_marks)
-                        
-                        question_results.append({
-                            'question_index': idx,
-                            'question_num': q_num,
-                            'question_text': q.get('question_text', ''),
-                            'extracted_answer': student_ans or f"Answer not found for Question {q_num}.",
-                            'ai_marks': marks,
-                            'marks_obtained': marks,
-                            'total_marks': q_marks,
-                            'similarity_score': marks / q_marks if q_marks > 0 else 0
-                        })
-
-                        total_marks_obtained += marks
-
-                    avg_similarity = (total_marks_obtained / total_marks) if total_marks > 0 else 0
-                    
-                    # ------------------------------------------------
-                    # STEP 3: CONSTRUCT FEEDBACK
-                    # ------------------------------------------------
-                    _progress(92, 'Finalizing feedback...')
-                    
-                    from services.marks_calculator import get_grade
-                    grade = get_grade(total_marks_obtained, total_marks)
-                    
-                    # Keywords: use AI-detected keywords or fallback to extraction
-                    ai_keywords = gemini_result.get('matched_keywords', [])
-                    if not ai_keywords and raw_text:
-                         from services.nlp_preprocessing import extract_keywords
-                         ai_keywords = extract_keywords(raw_text)
-
-                    # Build the complex feedback object that the frontend expects
-                    feedback = {
-                        'grade': grade,
-                        'similarity_percentage': round(avg_similarity * 100, 1),
-                        'marks_obtained': total_marks_obtained,
-                        'total_marks': total_marks,
-                        'keyword_analysis': {
-                            'matched_keywords': ai_keywords,
-                            'missing_keywords': gemini_result.get('weaknesses', [])[:5],
-                            'keyword_overlap': len(ai_keywords) * 5, # Simulated percentage or 0
-                            'total_model_keywords': len(ai_keywords) + 2
-                        },
-                        'strengths': gemini_result.get('strengths', ["Good attempt."]),
-                        'weaknesses': gemini_result.get('weaknesses', ["Room for more detail."]),
-                        'suggestions': gemini_result.get('suggestions', ["Provide more specific examples."]),
-                        'reasoning': reasoning
-                    }
-
-                   # ------------------------------------------------
-                    # BUILD CLEAN STUDENT TEXT
-                    # ------------------------------------------------
-
-                    clean_student_text = ""
-
-                    for q in question_results:
-                        clean_student_text += f"Question {q['question_num']}: {q['extracted_answer']}\n\n"
-
-                    clean_student_text = clean_student_text.strip()
-
-
-                    # ------------------------------------------------
-                    # STEP 4: SAVE RESULTS
-                    # ------------------------------------------------
-
-                    _progress(95, 'Saving final results...')
-
-                    submission_model.update_evaluation(
-                        submission_id,
-                        clean_student_text,   # <-- CHANGED HERE
-                        question_results,
-                        avg_similarity,
-                        total_marks_obtained,
-                        feedback
-                    )
-
-                    _progress(100, 'Evaluation complete')
-
-                    elapsed = time.time() - t_start
-
-                    print(f"\n[EVAL] DONE for {submission_id} in {elapsed:.1f}s")
-                    print(f"[EVAL] FINAL MARKS: {total_marks_obtained}/{total_marks}\n")
-
-                except Exception as e:
-
-                    import traceback
-                    err_msg = traceback.format_exc()
-                    _log(f"CRITICAL ERROR: {e}\n{err_msg}")
-                    print(f"[EVAL ERROR] Submission {submission_id}: {e}")
-                    
-                    user_message = str(e).strip() or "Evaluation failed"
-                    submission_model.set_progress(submission_id, 100, 'Evaluation failed')
-                    submission_model.set_status(submission_id, 'error', error_message=user_message)
-
-                finally:
-                    gc.collect()
-
-        finally:
-            semaphore.release()
-            gc.collect()
-
-    thread = threading.Thread(target=_evaluate, daemon=True)
-    thread.start()
-
-
 @student_bp.route('/assignments', methods=['GET'])
 @jwt_required()
 def list_assignments():
@@ -360,8 +132,9 @@ def submit_answer():
     submission_model.set_progress(submission['id'], 1, 'Queued for evaluation...')
 
     # Run evaluation pipeline in a background thread so the request returns immediately
+    from services.evaluation_manager import run_evaluation_async
     app = current_app._get_current_object()
-    _run_evaluation_async(
+    run_evaluation_async(
         app, submission['id'], file_path, ext,
         assignment, assignment['total_marks']
     )
@@ -401,8 +174,9 @@ def retry_evaluation(submission_id):
     submission_model.set_status(submission_id, 'processing', error_message='')
     submission_model.set_progress(submission_id, 1, 'Queued for re-evaluation...')
 
+    from services.evaluation_manager import run_evaluation_async
     app = current_app._get_current_object()
-    _run_evaluation_async(
+    run_evaluation_async(
         app, submission_id, submission['file_path'],
         submission['file_type'], assignment,
         assignment['total_marks']
@@ -425,6 +199,8 @@ def view_results():
     assignment_model = AssignmentModel(_get_db())
 
     submissions = submission_model.get_by_student(user_id)
+    # Filter out teacher-uploaded private evaluations
+    submissions = [s for s in submissions if not s.get('is_private', False)]
 
     # Enrich with assignment info
     for s in submissions:

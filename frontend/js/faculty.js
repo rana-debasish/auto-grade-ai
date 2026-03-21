@@ -172,33 +172,71 @@ function setupAssignmentForm() {
     const form = document.getElementById('assignment-form');
     if (!form) return;
 
+    const studentCopiesInput = document.getElementById('student-copies');
+    const createBtn = document.getElementById('create-btn');
+
+    if (studentCopiesInput && createBtn) {
+        studentCopiesInput.addEventListener('change', () => {
+            if (studentCopiesInput.files.length > 0) {
+                createBtn.innerHTML = `
+                    <svg width="20" height="20" fill="currentColor" class="me-2" viewBox="0 0 16 16">
+                        <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
+                        <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/>
+                    </svg> Evaluate All (${studentCopiesInput.files.length} Files)`;
+                createBtn.classList.remove('btn-primary');
+                createBtn.classList.add('btn-success');
+            } else {
+                createBtn.textContent = 'Create Assignment';
+                createBtn.classList.remove('btn-success');
+                createBtn.classList.add('btn-primary');
+            }
+        });
+    }
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.getElementById('create-btn');
+        const originalText = btn.innerHTML;
         btn.disabled = true;
-        btn.textContent = 'Creating...';
+        btn.textContent = 'Processing...';
 
         try {
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('subject', document.getElementById('subject').value);
+            formData.append('total_marks', document.getElementById('total-marks').value || '100');
+            formData.append('model_answer', document.getElementById('model-answer').value);
+            
+            const markingScheme = document.getElementById('marking-scheme');
+            if (markingScheme) formData.append('marking_scheme', markingScheme.value);
+
+            if (studentCopiesInput && studentCopiesInput.files.length > 0) {
+                for (let i = 0; i < studentCopiesInput.files.length; i++) {
+                    formData.append('student_copies', studentCopiesInput.files[i]);
+                }
+            }
+
             const data = await apiRequest('/faculty/assignment', {
                 method: 'POST',
-                body: JSON.stringify({
-                    title: document.getElementById('title').value,
-                    subject: document.getElementById('subject').value,
-                    total_marks: parseInt(document.getElementById('total-marks').value) || 100,
-                    model_answer: document.getElementById('model-answer').value
-                }),
+                body: formData, // apiRequest needs to handle FormData by NOT setting Content-Type to application/json
             });
 
             showAlert(data.message || 'Assignment created successfully!', 'success');
             form.reset();
-            document.getElementById('total-marks').value = '100'; // Reset to default
+            createBtn.textContent = 'Create Assignment';
+            createBtn.classList.remove('btn-success');
+            createBtn.classList.add('btn-primary');
+            
             loadMyAssignments();
+            if (studentCopiesInput && studentCopiesInput.files.length > 0) {
+                 // Redirect to dashboard to see evaluations
+                 setTimeout(() => window.location.href = 'dashboard.html', 1500);
+            }
 
         } catch (err) {
             showAlert(err.message);
-        } finally {
             btn.disabled = false;
-            btn.textContent = 'Create Assignment';
+            btn.innerHTML = originalText;
         }
     });
 }

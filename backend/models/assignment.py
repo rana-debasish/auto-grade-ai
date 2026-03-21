@@ -9,12 +9,9 @@ class AssignmentModel:
     def __init__(self, db):
         self.collection = db['assignments']
 
-    def create(self, faculty_id, title, subject, questions, total_marks=100):
+    def create(self, faculty_id, title, subject, questions, total_marks=100, marking_scheme=None):
         """
         Create a new assignment.
-        
-        Args:
-            questions: List of { 'question_text': str, 'model_answer': str, 'marks': int }
         """
         assignment = {
             'faculty_id': faculty_id,
@@ -22,6 +19,7 @@ class AssignmentModel:
             'subject': subject,
             'questions': questions,
             'total_marks': total_marks,
+            'marking_scheme': marking_scheme,
             'created_at': datetime.now(timezone.utc),
             'is_active': True,
         }
@@ -68,6 +66,7 @@ class AssignmentModel:
             'subject': doc['subject'],
             'questions': doc.get('questions', []),
             'total_marks': doc['total_marks'],
+            'marking_scheme': doc.get('marking_scheme', ''),
             'created_at': doc['created_at'].isoformat(),
             'is_active': doc.get('is_active', True),
         }

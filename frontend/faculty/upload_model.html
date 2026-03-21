@@ -67,7 +67,7 @@
 
                         <div class="mb-3">
                             <label for="model-answer" class="form-label">Questions & Model Answers</label>
-                            <textarea class="form-control" id="model-answer" rows="15"
+                            <textarea class="form-control" id="model-answer" rows="10"
                                       placeholder="Example:
 1. What is a Linked List? (10 marks)
 A linked list is a linear data structure...
@@ -77,7 +77,22 @@ Big O notation is used to describe complexity..."
                                       required></textarea>
                             <div class="form-text mt-2">
                                 <strong>Smart Parsing:</strong> Use 1., 2. for questions and (10) or [20] for marks. 
-                                The AI will split these automatically for evaluation.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="marking-scheme" class="form-label">Marking Scheme (Optional)</label>
+                            <textarea class="form-control" id="marking-scheme" rows="5"
+                                      placeholder="Provide a rubric or specific grading rules for the AI to follow (e.g. Deduct 2 marks if diagram is missing)"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="student-copies" class="form-label">Student Copies (Optional)</label>
+                            <input type="file" class="form-control" id="student-copies" accept=".pdf,.png,.jpg,.jpeg" multiple>
+                            <div class="form-text mt-2">
+                                💡 <strong>Evaluate All:</strong> Upload multiple files to evaluate them immediately.
+                                <br>
+                                📝 <strong>Naming:</strong> Filenames will be used as student names.
                             </div>
                         </div>
 
@@ -94,6 +109,8 @@ Big O notation is used to describe complexity..."
                     <ul class="list-unstyled">
                         <li class="mb-2"><strong>Title:</strong> Be specific so students can identify the assignment</li>
                         <li class="mb-2"><strong>Model Answer:</strong> Include all key concepts, terms, and explanations</li>
+                        <li class="mb-2"><strong>Marking Scheme:</strong> Guide the AI on how to deduct or award marks strictly</li>
+                        <li class="mb-2"><strong>Bulk Evaluate:</strong> Drag and drop multiple student answer scripts to save time</li>
                         <li class="mb-2"><strong>Total Marks:</strong> Set according to your grading scheme</li>
                     </ul>
                     <hr>

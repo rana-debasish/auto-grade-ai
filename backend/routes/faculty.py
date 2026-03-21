@@ -26,14 +26,20 @@ def create_assignment():
     if err:
         return err
 
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Request body is required'}), 400
+    # Support both JSON and Multipart (for files)
+    if request.is_json:
+        data = request.get_json()
+        files = []
+    else:
+        # data = request.form
+        data = request.form.to_dict()
+        files = request.files.getlist('student_copies')
 
     title = data.get('title', '').strip()
     subject = data.get('subject', '').strip()
-    full_model_text = data.get('model_answer', '').strip() # Single block of text
-    default_total = data.get('total_marks', 100)
+    full_model_text = data.get('model_answer', '').strip()
+    marking_scheme = data.get('marking_scheme', '').strip() or None
+    default_total = int(data.get('total_marks', 100))
 
     if not title or not subject or not full_model_text:
         return jsonify({'error': 'Title, subject, and model_answer are required'}), 400
@@ -44,16 +50,74 @@ def create_assignment():
     if not questions:
         return jsonify({'error': 'No questions found in text'}), 400
 
-    # Calculate final total marks from parsed questions
     total_marks = sum(q['marks'] for q in questions)
 
     from models.assignment import AssignmentModel
-    model = AssignmentModel(_get_db())
-    assignment = model.create(user_id, title, subject, questions, total_marks)
+    from models.submission import SubmissionModel
+    from app import db
+    
+    as_model = AssignmentModel(db)
+    sub_model = SubmissionModel(db)
+    
+    assignment = as_model.create(user_id, title, subject, questions, total_marks, marking_scheme)
+    assignment_id = assignment['id']
+
+    # Handle Bulk Student Copies (if any)
+    eval_count = 0
+    if files:
+        from werkzeug.utils import secure_filename
+        from routes.student import _allowed_file as allowed_file
+        from services.evaluation_manager import run_evaluation_async
+        from flask import current_app
+        import uuid
+        
+        upload_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+
+        for f in files:
+            if f and allowed_file(f.filename):
+                # Extract student name from filename
+                # e.g. 23rahul.pdf -> 23rahul
+                orig_name = f.filename
+                extracted_name = os.path.splitext(orig_name)[0]
+                
+                ext = orig_name.rsplit('.', 1)[1].lower()
+                filename = f"{uuid.uuid4().hex}.{ext}"
+                filepath = os.path.join(upload_folder, filename)
+                f.save(filepath)
+                
+                # Create submission (assoc with teacher user_id as 'student_id' for now, or just leave it)
+                # Setting student_id to user_id (faculty) but marking is_private=True
+                submission = sub_model.create(
+                    student_id=user_id, 
+                    assignment_id=assignment_id, 
+                    file_path=filepath, 
+                    file_type=ext,
+                    is_private=True,
+                    extracted_student_name=extracted_name
+                )
+                
+                # Trigger Evaluation
+                app = current_app._get_current_object()
+                run_evaluation_async(
+                    app, 
+                    submission['id'], 
+                    filepath, 
+                    ext, 
+                    assignment, 
+                    total_marks
+                )
+                eval_count += 1
+
+    msg = f"Assignment created with {len(questions)} questions."
+    if eval_count > 0:
+        msg += f" {eval_count} student copies are being evaluated."
 
     return jsonify({
-        'message': f'Assignment created with {len(questions)} questions.',
+        'message': msg,
         'assignment': assignment,
+        'evaluations_started': eval_count
     }), 201
 
 
@@ -215,11 +279,15 @@ def view_submissions():
 
     # Enrich with student name and assignment title
     for s in submissions:
-        student = user_model.get_by_id(s['student_id'])
-        s['student_name'] = student['name'] if student else 'Unknown'
-        assignment = assignment_model.get_by_id(s['assignment_id'])
-        s['assignment_title'] = assignment['title'] if assignment else 'Unknown'
-        s['total_marks'] = assignment['total_marks'] if assignment else 0
+        if s.get('is_private') and s.get('extracted_student_name'):
+            s['student_name'] = s.get('extracted_student_name')
+        else:
+            student = user_model.get_by_id(s['student_id'])
+            s['student_name'] = student['name'] if student else 'Unknown'
+            
+        assignment_doc = assignment_model.get_by_id(s['assignment_id'])
+        s['assignment_title'] = assignment_doc['title'] if assignment_doc else 'Unknown'
+        s['total_marks'] = assignment_doc['total_marks'] if assignment_doc else 0
 
     return jsonify({'submissions': submissions}), 200
 

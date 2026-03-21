@@ -9,12 +9,14 @@ class SubmissionModel:
     def __init__(self, db):
         self.collection = db['submissions']
 
-    def create(self, student_id, assignment_id, file_path, file_type):
+    def create(self, student_id, assignment_id, file_path, file_type, is_private=False, extracted_student_name=None):
         submission = {
             'student_id': student_id,
             'assignment_id': assignment_id,
             'file_path': file_path,
             'file_type': file_type,
+            'is_private': is_private,
+            'extracted_student_name': extracted_student_name,
             'extracted_text': '',
             'question_results': [],  # [{question_index, extracted_answer, similarity_score, marks_obtained, ai_marks}]
             'similarity_score': 0.0,
@@ -140,6 +142,8 @@ class SubmissionModel:
             'id': str(doc['_id']),
             'student_id': doc['student_id'],
             'assignment_id': doc['assignment_id'],
+            'is_private': doc.get('is_private', False),
+            'extracted_student_name': doc.get('extracted_student_name'),
             'file_path': doc.get('file_path', ''),
             'file_type': doc.get('file_type', ''),
             'extracted_text': doc.get('extracted_text', ''),
