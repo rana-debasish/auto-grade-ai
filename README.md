@@ -4,22 +4,20 @@ An intelligent system that evaluates student answer scripts using AI — combini
 
 ## ✨ Features
 
-- **Multi-format Upload** — Supports PDF, PNG, JPG, JPEG, TXT, DOCX files
-- **AI-Powered Evaluation** — Google Gemini API for extraction and grading
-- **OCR Text Extraction** — PyMuPDF for digital documents
-- **Split-View Grading** — Review PDF and assign marks side-by-side
-- **Detailed Feedback** — Per-question marks, justification, and correctness
-- **Role-Based Access** — Students, Faculty, and Admin dashboards
-- **Reports & Export** — Faculty can download Excel reports
-- **Theme Support** — Light, Dark, and System theme modes
-- **Memory Optimized** — Designed for deployment on Render free tier (512MB RAM)
-
-## 🏗️ Architecture
+- **Multi-student Bulk Evaluation** — Upload multiple answer scripts at once for automated "Evaluate All" grading.
+- **Smart Name Extraction** — Automatically detects student names from filenames (e.g., `23rahul.pdf` → `Student: 23rahul`).
+- **AI-Powered Evaluation** — Google Gemini API integration for deep answer analysis and scoring.
+- **Custom Marking Schemes** — Optional rubrics to guide the AI on strictness and specific grading criteria.
+- **OCR & Multimodal Processing** — Advanced extraction using PyMuPDF and Google's latest multimodal models.
+- **Split-View Grading** — Faculty can review AI grades alongside original student PDFs.
+- **Private Submissions** — Teacher-led evaluations are kept private and hidden from standard student dashboards.
+- **Role-Based Access** — Secure dashboards for Students, Faculty, and Admin.
+- **Analytics & Export** — Detailed performance reports with Excel export functionality.
 
 ```
 ┌──────────────────────────────────────────────┐
 │                  Frontend                     │
-│   HTML + CSS + JavaScript (SPA)               │
+│   Vanilla JS + Bootstrap 5 + Glassmorphism    │
 │   Login │ Student │ Faculty │ Admin            │
 └──────────────────┬───────────────────────────┘
                    │ REST API (JWT Auth)
@@ -27,10 +25,15 @@ An intelligent system that evaluates student answer scripts using AI — combini
 │              Flask Backend                    │
 │   Routes → Services → Models                 │
 │                                              │
-│   ┌────────────┐  ┌──────────────────────┐   │
-│   │ OCR        │  │ Evaluation Engine    │   │
-│   │ PyMuPDF    │  │ Google Gemini API    │   │
-│   └────────────┘  └──────────────────────┘   │
+│   ┌────────────────────┐  ┌──────────────┐   │
+│   │ Evaluation Manager │  │ OCR Service  │   │
+│   │ (Background Tasks) │  │ (PyMuPDF)    │   │
+│   └──────────┬─────────┘  └──────────────┘   │
+│              │
+│   ┌──────────┴─────────┐
+│   │ Google Gemini API  │
+│   │ (Vision & Text)    │
+│   └────────────────────┘
 └──────────────────┬───────────────────────────┘
                    │
           ┌────────┴────────┐
@@ -38,42 +41,27 @@ An intelligent system that evaluates student answer scripts using AI — combini
           └─────────────────┘
 ```
 
-## 📁 Project Structure
-
 ```
 ├── backend/
-│   ├── app.py                 # Flask application & configuration
-│   ├── config.py              # Environment-based configuration
-│   ├── seed.py                # Admin user seeding script
+│   ├── app.py                 # Flask application entry point
 │   ├── models/
-│   │   ├── user.py            # User model (students, faculty, admin)
-│   │   ├── assignment.py      # Assignment model (questions + model answers)
-│   │   └── submission.py      # Submission model (student submissions + results)
+│   │   ├── user.py            # RBAC User definitions
+│   │   ├── assignment.py      # Assignment & Marking Scheme storage
+│   │   └── submission.py      # Student scripts & AI results
 │   ├── routes/
-│   │   ├── auth.py            # Authentication (login, register)
-│   │   ├── student.py         # Student endpoints (submit, view results)
-│   │   ├── faculty.py         # Faculty endpoints (create assignments, reviews)
-│   │   └── admin.py           # Admin endpoints (manage users, stats)
+│   │   ├── auth.py            # JWT-based security
+│   │   ├── student.py         # Student submission flow
+│   │   ├── faculty.py         # Assignment creation & Bulk eval
+│   │   └── admin.py           # System management
 │   ├── services/
-│   │   ├── gemini_service.py      # Google Gemini API integration
-│   │   ├── nlp_preprocessing.py   # Text cleaning and parsing
-│   │   └── ocr_service.py         # Text extraction from documents
-│   ├── uploads/               # Temporary file storage
-│   └── requirements.txt       # Python dependencies
+│   │   ├── evaluation_manager.py # Shared evaluation pipeline (Async)
+│   │   ├── gemini_service.py     # AI Model integration
+│   │   └── ocr_service.py        # Text & Image processing
+│   └── uploads/               # Secure script storage
 ├── frontend/
-│   ├── index.html             # Login/Register page
-│   ├── student.html           # Student dashboard
-│   ├── faculty/               # Faculty dashboard & tools
-│   │   ├── dashboard.html     # Assignment list
-│   │   ├── edit_evaluation.html # Split-view grading tool
-│   │   └── reports.html       # Analytics
-│   ├── admin.html             # Admin dashboard
-│   ├── css/                   # Stylesheets
-│   └── js/
-│       ├── auth.js            # Authentication logic
-│       ├── student.js         # Student interface
-│       ├── faculty.js         # Faculty interface
-│       └── admin.js           # Admin interface
+│   ├── faculty/               # Faculty tools (Dashboard, Eval, Reports)
+│   ├── student.html           # Student results & profile
+│   └── js/                    # Modular JS controllers
 ├── start_with_ngrok.py        # Launcher with ngrok tunnel
 ├── .env.example               # Environment template
 ├── Run_on_Colab.ipynb         # Google Colab notebook
@@ -206,20 +194,23 @@ All settings are configured via environment variables (see `.env.example`):
 | POST   | `/api/auth/register` | User registration |
 
 ### Student
-| Method | Endpoint                          | Description            |
-|--------|----------------------------------|------------------------|
-| GET    | `/api/student/assignments`        | List available assignments |
-| POST   | `/api/student/submit/<id>`        | Submit answer script   |
-| GET    | `/api/student/results`            | View all results       |
-| GET    | `/api/student/result/<id>`        | View specific result   |
+| Method | Endpoint                    | Description                  |
+|--------|-----------------------------|------------------------------|
+| GET    | `/api/student/assignments`  | List active assignments      |
+| POST   | `/api/student/submit/<id>`  | Upload answer script         |
+| GET    | `/api/student/results`      | View evaluated results       |
+| GET    | `/api/student/result/<id>`  | View specific evaluation detail|
+| POST   | `/api/student/retry/<id>`   | Re-trigger AI evaluation      |
 
-### Teacher
-| Method | Endpoint                          | Description              |
-|--------|----------------------------------|--------------------------|
-| POST   | `/api/teacher/assignment`         | Create assignment        |
-| GET    | `/api/teacher/submissions/<id>`   | View submissions         |
-| PUT    | `/api/teacher/submission/<id>/marks` | Edit marks            |
-| GET    | `/api/teacher/reports`            | Generate reports         |
+### Faculty
+| Method | Endpoint                         | Description                    |
+|--------|----------------------------------|--------------------------------|
+| POST   | `/api/faculty/assignment`        | Create Assignment + Bulk Eval  |
+| GET    | `/api/faculty/assignments`       | List managed assignments       |
+| GET    | `/api/faculty/submissions`       | Filtered student scripts       |
+| GET    | `/api/faculty/evaluation/<id>`   | Fetch detailed AI analysis     |
+| POST   | `/api/faculty/evaluation/update` | Manual mark override & feedback|
+| GET    | `/api/faculty/reports`           | Assignment performance stats   |
 
 ### Admin
 | Method | Endpoint                    | Description          |
