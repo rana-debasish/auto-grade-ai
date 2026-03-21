@@ -34,6 +34,12 @@ function animateAdminValue(elementId, endValue, duration = 500) {
     const el = document.getElementById(elementId);
     if (!el) return;
     
+    // Safety check for null/undefined values
+    if (endValue === undefined || endValue === null) {
+        el.textContent = '0';
+        return;
+    }
+    
     const isNumber = !isNaN(parseFloat(endValue.toString().replace('%', '')));
     if (!isNumber || endValue === 'N/A') {
         el.textContent = endValue;
@@ -73,13 +79,13 @@ async function loadAdminDashboard() {
         // Animate stats
         animateAdminValue('stat-users', s.total_users);
         animateAdminValue('stat-students', s.total_students);
-        animateAdminValue('stat-facultys', s.total_facultys);
+        animateAdminValue('stat-facultys', s.total_faculty); // Fixed: backend uses total_faculty
         animateAdminValue('stat-assignments', s.total_assignments);
         animateAdminValue('stat-submissions', s.total_submissions);
         animateAdminValue('stat-evaluated', s.evaluated_submissions);
         animateAdminValue('stat-pending', s.pending_submissions);
         animateAdminValue('stat-errors', s.error_submissions);
-        animateAdminValue('stat-avg-sim', s.average_similarity > 0 ? s.average_similarity + '%' : 'N/A');
+        animateAdminValue('stat-avg-sim', s.average_similarity > 0 ? (s.average_similarity * 100).toFixed(1) + '%' : '0%');
 
     } catch (err) {
         console.error('Admin dashboard error:', err);
