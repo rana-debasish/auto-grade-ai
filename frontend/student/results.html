@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-custom">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/student/dashboard.html">&#x1F4DD; AI Evaluator</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="/student/dashboard.html">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/student/submit.html">Submit Answer</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="/student/results.html">My Results</a></li>
+                </ul>
+                <div class="d-flex align-items-center">
+                    <div class="user-dropdown" id="user-dropdown">
+                        <div class="user-dropdown-trigger" onclick="toggleUserMenu()">
+                            <span class="user-avatar" id="user-avatar"></span>
+                            <span class="user-name-text" id="user-name"></span>
+                        </div>
+                        <div class="user-dropdown-menu" id="user-menu"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <div class="page-header">
+            <h1>My Evaluation Results</h1>
+            <p>View marks, grades, and AI-generated feedback for all your submissions</p>
+        </div>
+
+        <div id="results-container">
+            <p class="text-muted text-center py-4">Loading results...</p>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Help & Support</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="help-section">
+                        <h6>📊 Understanding Your Results</h6>
+                        <p>Your results show the similarity score, marks obtained, and detailed AI feedback on your submission.</p>
+                    </div>
+                    <div class="help-section">
+                        <h6>🎯 Improving Your Score</h6>
+                        <p>Review the "Areas for Improvement" and "Suggestions" sections to improve future submissions.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Modal -->
+    <div class="modal fade" id="accountModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Account Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Name</label>
+                        <div class="fw-bold" id="account-name"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Email</label>
+                        <div class="fw-bold" id="account-email"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Role</label>
+                        <div class="fw-bold text-capitalize" id="account-role"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/student.js"></script>
+    <script>
+        const user = requireAuth('student');
+        if (user) {
+            document.getElementById('user-name').textContent = user.name;
+            document.getElementById('user-avatar').textContent = user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+            initUserDropdown();
+            loadResults();
+        }
+    </script>
+</body>
+</html>
