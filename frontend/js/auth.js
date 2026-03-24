@@ -7,11 +7,7 @@ const API_BASE = '/api';
 // ---- Theme Management ----
 
 function initTheme() {
-<<<<<<< HEAD
-    const savedTheme = localStorage.getItem('theme') || 'light';
-=======
     const savedTheme = localStorage.getItem('theme') || 'system';
->>>>>>> beee4f2fb628b3d9f30d5399ae88020785a72bc4
     applyTheme(savedTheme);
 }
 
@@ -316,7 +312,6 @@ async function apiRequest(url, options = {}) {
     }
 
     const response = await fetch(API_BASE + url, { ...options, headers });
-<<<<<<< HEAD
     let data = {};
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -328,12 +323,6 @@ async function apiRequest(url, options = {}) {
 
     if (!response.ok) {
         throw new Error(data.error || data.message || data.msg || `Request failed (${response.status})`);
-=======
-    const data = await response.json();
-
-    if (!response.ok) {
-        throw new Error(data.error || data.message || 'Request failed');
->>>>>>> beee4f2fb628b3d9f30d5399ae88020785a72bc4
     }
 
     return data;

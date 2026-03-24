@@ -89,11 +89,7 @@ async function loadAdminDashboard() {
 
     } catch (err) {
         console.error('Admin dashboard error:', err);
-<<<<<<< HEAD
         showToast(`Failed to load stats: ${err.message}`, 'error');
-=======
-        showToast('Failed to load dashboard stats', 'error');
->>>>>>> beee4f2fb628b3d9f30d5399ae88020785a72bc4
     }
 }
 

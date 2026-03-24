@@ -88,7 +88,6 @@ def system_stats():
     if err:
         return err
 
-<<<<<<< HEAD
     try:
         from models.user import UserModel
         from models.assignment import AssignmentModel
@@ -115,30 +114,6 @@ def system_stats():
         import traceback
         traceback.print_exc()
         return jsonify({'error': 'Dashboard error', 'message': str(e)}), 500
-=======
-    from models.user import UserModel
-    from models.assignment import AssignmentModel
-    from models.submission import SubmissionModel
-
-    db = _get_db()
-    user_model = UserModel(db)
-    assignment_model = AssignmentModel(db)
-    submission_model = SubmissionModel(db)
-
-    stats = {
-        'total_users': user_model.count(),
-        'total_students': user_model.count(role='student'),
-        'total_faculty': user_model.count(role='faculty'),
-        'total_assignments': assignment_model.count(),
-        'total_submissions': submission_model.count(),
-        'evaluated_submissions': submission_model.count(status='evaluated'),
-        'pending_submissions': submission_model.count(status='pending'),
-        'error_submissions': submission_model.count(status='error'),
-        'average_similarity': round(submission_model.average_score(), 2),
-    }
-
-    return jsonify({'stats': stats}), 200
->>>>>>> beee4f2fb628b3d9f30d5399ae88020785a72bc4
 
 
 # ---- Assignment Management ----
