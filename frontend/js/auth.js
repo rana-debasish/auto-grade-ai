@@ -7,7 +7,7 @@ const API_BASE = '/api';
 // ---- Theme Management ----
 
 function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'system';
+    const savedTheme = localStorage.getItem('theme') || 'light';
     applyTheme(savedTheme);
 }
 
@@ -312,10 +312,17 @@ async function apiRequest(url, options = {}) {
     }
 
     const response = await fetch(API_BASE + url, { ...options, headers });
-    const data = await response.json();
+    let data = {};
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+    } else {
+        const text = await response.text();
+        throw new Error(`Server returned non-JSON response (${response.status}): ${text.slice(0, 50)}...`);
+    }
 
     if (!response.ok) {
-        throw new Error(data.error || data.message || 'Request failed');
+        throw new Error(data.error || data.message || data.msg || `Request failed (${response.status})`);
     }
 
     return data;

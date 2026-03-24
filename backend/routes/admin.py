@@ -88,28 +88,32 @@ def system_stats():
     if err:
         return err
 
-    from models.user import UserModel
-    from models.assignment import AssignmentModel
-    from models.submission import SubmissionModel
+    try:
+        from models.user import UserModel
+        from models.assignment import AssignmentModel
+        from models.submission import SubmissionModel
 
-    db = _get_db()
-    user_model = UserModel(db)
-    assignment_model = AssignmentModel(db)
-    submission_model = SubmissionModel(db)
+        db = _get_db()
+        user_model = UserModel(db)
+        assignment_model = AssignmentModel(db)
+        submission_model = SubmissionModel(db)
 
-    stats = {
-        'total_users': user_model.count(),
-        'total_students': user_model.count(role='student'),
-        'total_faculty': user_model.count(role='faculty'),
-        'total_assignments': assignment_model.count(),
-        'total_submissions': submission_model.count(),
-        'evaluated_submissions': submission_model.count(status='evaluated'),
-        'pending_submissions': submission_model.count(status='pending'),
-        'error_submissions': submission_model.count(status='error'),
-        'average_similarity': round(submission_model.average_score(), 2),
-    }
-
-    return jsonify({'stats': stats}), 200
+        stats = {
+            'total_users': user_model.count() or 0,
+            'total_students': user_model.count(role='student') or 0,
+            'total_faculty': (user_model.count(role='faculty') or 0) + (user_model.count(role='teacher') or 0),
+            'total_assignments': assignment_model.count() or 0,
+            'total_submissions': submission_model.count() or 0,
+            'evaluated_submissions': submission_model.count(status='evaluated') or 0,
+            'pending_submissions': submission_model.count(status='pending') or 0,
+            'error_submissions': submission_model.count(status='error') or 0,
+            'average_similarity': round(submission_model.average_score() or 0.0, 2),
+        }
+        return jsonify({'stats': stats}), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Dashboard error', 'message': str(e)}), 500
 
 
 # ---- Assignment Management ----

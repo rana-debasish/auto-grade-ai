@@ -132,7 +132,9 @@ class SubmissionModel:
             {'$group': {'_id': None, 'avg_score': {'$avg': '$similarity_score'}}}
         ]
         result = list(self.collection.aggregate(pipeline))
-        return result[0]['avg_score'] if result else 0.0
+        if not result or result[0].get('avg_score') is None:
+            return 0.0
+        return result[0]['avg_score']
 
     @staticmethod
     def _serialize(doc):
