@@ -39,3 +39,7 @@ backend/nltk_data/
 # Logs
 *.log
 nohup.out
+
+# Local Archify diagrams
+.archify/
+

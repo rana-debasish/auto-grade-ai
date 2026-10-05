@@ -1,9 +1,19 @@
 """Authentication routes — register and login."""
 
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
+from app import limiter
+from config import Config
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _tokens_for_user(user):
+    claims = {'role': user['role'], 'name': user['name'], 'email': user['email']}
+    return {
+        'token': create_access_token(identity=user['id'], additional_claims=claims),
+        'refresh_token': create_refresh_token(identity=user['id'], additional_claims=claims),
+    }
 
 
 def _get_db():
@@ -40,20 +50,17 @@ def register():
         return jsonify({'error': error}), 409
 
     # Generate JWT token
-    token = create_access_token(identity=user['id'], additional_claims={
-        'role': user['role'],
-        'name': user['name'],
-        'email': user['email'],
-    })
+    tokens = _tokens_for_user(user)
 
     return jsonify({
         'message': 'Registration successful',
-        'token': token,
+        **tokens,
         'user': user,
     }), 201
 
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit(Config.LOGIN_RATE_LIMIT)
 def login():
     data = request.get_json()
     if not data:
@@ -72,14 +79,20 @@ def login():
     if error:
         return jsonify({'error': error}), 401
 
-    token = create_access_token(identity=user['id'], additional_claims={
-        'role': user['role'],
-        'name': user['name'],
-        'email': user['email'],
-    })
+    tokens = _tokens_for_user(user)
 
     return jsonify({
         'message': 'Login successful',
-        'token': token,
+        **tokens,
         'user': user,
     }), 200
+
+
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    from models.user import UserModel
+    user = UserModel(_get_db()).get_by_id(get_jwt_identity())
+    if not user or not user.get('is_active', True):
+        return jsonify({'error': {'code': 'ACCOUNT_INACTIVE', 'message': 'This account is no longer active.'}}), 401
+    return jsonify(_tokens_for_user(user)), 200

@@ -11,16 +11,7 @@ from pymongo import MongoClient
 sys.path.insert(0, os.path.dirname(__file__))
 from config import Config
 
-# Use TLS/SSL settings only if not on localhost
-mongo_kwargs = {
-    'serverSelectionTimeoutMS': 5000
-}
-
-if "localhost" not in Config.MONGO_URI and "127.0.0.1" not in Config.MONGO_URI:
-    mongo_kwargs['tls'] = True
-    mongo_kwargs['tlsAllowInvalidCertificates'] = True
-
-client = MongoClient(Config.MONGO_URI, **mongo_kwargs)
+client = MongoClient(Config.MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client[Config.MONGO_DB_NAME]
 
 

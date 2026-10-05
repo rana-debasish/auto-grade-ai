@@ -7,7 +7,7 @@ const API_BASE = '/api';
 // ---- Theme Management ----
 
 function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'system';
+    const savedTheme = localStorage.getItem('theme') || 'dark';
     applyTheme(savedTheme);
 }
 
@@ -243,7 +243,11 @@ function setupPasswordToggles() {
             toggle.addEventListener('click', () => {
                 const isPassword = input.type === 'password';
                 input.type = isPassword ? 'text' : 'password';
-                toggle.innerHTML = isPassword ? '👁️' : '👁️‍🗨️';
+                toggle.innerHTML = isPassword
+                    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>'
+                    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path d="m4 4 16 16"/></svg>';
+                toggle.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+                toggle.setAttribute('aria-pressed', String(isPassword));
             });
         }
     });
@@ -252,9 +256,11 @@ function setupPasswordToggles() {
 // Setup password toggles on DOM ready
 document.addEventListener('DOMContentLoaded', setupPasswordToggles);
 
-function saveAuth(token, user) {
+function saveAuth(token, user, refreshToken = null) {
     localStorage.setItem('token', token);
+    if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
     localStorage.setItem('user', JSON.stringify(user));
+    sessionStorage.removeItem('session-expired');
 }
 
 function getToken() {
@@ -269,6 +275,7 @@ function getUser() {
 function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('refresh_token');
     window.location.href = '/';
 }
 
@@ -321,11 +328,41 @@ async function apiRequest(url, options = {}) {
         throw new Error(`Server returned non-JSON response (${response.status}): ${text.slice(0, 50)}...`);
     }
 
+    if (response.status === 401 && token && !url.startsWith('/auth/') && localStorage.getItem('refresh_token')) {
+        try {
+            const refreshed = await fetch(API_BASE + '/auth/refresh', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('refresh_token')}` } });
+            if (refreshed.ok) {
+                const tokens = await refreshed.json();
+                localStorage.setItem('token', tokens.token);
+                localStorage.setItem('refresh_token', tokens.refresh_token);
+                headers.Authorization = `Bearer ${tokens.token}`;
+                const retry = await fetch(API_BASE + url, { ...options, headers });
+                const retryData = await retry.json();
+                if (retry.ok) return retryData;
+                data = retryData;
+            }
+        } catch (_) { /* expiry handler below clears both credentials */ }
+    }
+
     if (!response.ok) {
-        throw new Error(data.error || data.message || data.msg || `Request failed (${response.status})`);
+        const isLoginFlow = url.startsWith('/auth/login') || url.startsWith('/auth/register');
+        if (response.status === 401 && token && !isLoginFlow) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user');
+            sessionStorage.setItem('session-expired', '1');
+            window.location.assign('/');
+        }
+        const apiError = data.error;
+        throw new Error((apiError && typeof apiError === 'object' ? apiError.message : apiError) || data.message || data.msg || `Request failed (${response.status})`);
     }
 
     return data;
+}
+
+if (sessionStorage.getItem('session-expired') === '1') {
+    sessionStorage.removeItem('session-expired');
+    document.addEventListener('DOMContentLoaded', () => showToast('Session expired. Please sign in again.', 'warning'));
 }
 
 // ---- Auto-redirect if already logged in ----
@@ -356,6 +393,30 @@ document.getElementById('show-login')?.addEventListener('click', (e) => {
     document.getElementById('alert-box').classList.add('d-none');
 });
 
+// Keep the login page information popover usable on touch devices as well as hover.
+const authInfo = document.querySelector('.auth-info');
+const authInfoTrigger = authInfo?.querySelector('.auth-info-trigger');
+
+authInfoTrigger?.addEventListener('click', () => {
+    const isOpen = authInfo.classList.toggle('is-open');
+    authInfoTrigger.setAttribute('aria-expanded', String(isOpen));
+});
+
+document.addEventListener('click', (event) => {
+    if (authInfo && !authInfo.contains(event.target)) {
+        authInfo.classList.remove('is-open');
+        authInfoTrigger?.setAttribute('aria-expanded', 'false');
+    }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && authInfo) {
+        authInfo.classList.remove('is-open');
+        authInfoTrigger?.setAttribute('aria-expanded', 'false');
+        authInfoTrigger?.focus();
+    }
+});
+
 // ---- Login ----
 
 document.getElementById('login-form')?.addEventListener('submit', async (e) => {
@@ -373,7 +434,7 @@ document.getElementById('login-form')?.addEventListener('submit', async (e) => {
             }),
         });
 
-        saveAuth(data.token, data.user);
+        saveAuth(data.token, data.user, data.refresh_token);
         showAlert('Login successful! Redirecting...', 'success');
         setTimeout(() => redirectToDashboard(data.user.role), 500);
     } catch (err) {
@@ -403,7 +464,7 @@ document.getElementById('register-form')?.addEventListener('submit', async (e) =
             }),
         });
 
-        saveAuth(data.token, data.user);
+        saveAuth(data.token, data.user, data.refresh_token);
         showAlert('Account created! Redirecting...', 'success');
         setTimeout(() => redirectToDashboard(data.user.role), 500);
     } catch (err) {

@@ -1,124 +1,165 @@
-import os
+"""Gemini evaluation with bounded retries, fallback, and rubric validation."""
+
 import json
 import logging
+import os
+import random
+import re
+import time
+
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv()
+from config import Config
 
-# Configure Gemini API
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    # Using 'gemini-flash-lite-latest' (more likely to have free quota available)
-    model = genai.GenerativeModel('gemini-flash-lite-latest')
-else:
-    logging.warning("GEMINI_API_KEY not found in environment variables.")
-    model = None
+load_dotenv()
+logger = logging.getLogger(__name__)
+API_KEY = os.getenv('GEMINI_API_KEY')
+if API_KEY:
+    genai.configure(api_key=API_KEY)
+
+QUESTION_SCHEMA = {
+    'type': 'OBJECT',
+    'properties': {
+        'q_no': {'type': 'INTEGER'}, 'marks': {'type': 'NUMBER'},
+        'extracted_answer': {'type': 'STRING'}, 'feedback': {'type': 'STRING'},
+        'confidence': {'type': 'NUMBER'},
+        'matched_points': {'type': 'ARRAY', 'items': {'type': 'STRING'}},
+        'missing_points': {'type': 'ARRAY', 'items': {'type': 'STRING'}},
+    },
+    'required': ['q_no', 'marks', 'extracted_answer', 'feedback', 'confidence', 'matched_points', 'missing_points'],
+}
+RESPONSE_SCHEMA = {
+    'type': 'OBJECT',
+    'properties': {
+        'questions': {'type': 'ARRAY', 'items': QUESTION_SCHEMA},
+        'overall_feedback': {'type': 'OBJECT', 'properties': {
+            'summary': {'type': 'STRING'}, 'strengths': {'type': 'ARRAY', 'items': {'type': 'STRING'}},
+            'weaknesses': {'type': 'ARRAY', 'items': {'type': 'STRING'}},
+            'suggestions': {'type': 'ARRAY', 'items': {'type': 'STRING'}},
+        }},
+    },
+    'required': ['questions', 'overall_feedback'],
+}
+
+
+def _transient(error):
+    name = type(error).__name__.lower()
+    message = str(error).lower()
+    code = getattr(error, 'code', None)
+    code_text = str(code).lower() if code is not None else ''
+    return any(token in name + ' ' + message + ' ' + code_text for token in
+               ('429', 'resourceexhausted', 'ratelimit', '503', '502', '500', 'unavailable', 'deadlineexceeded', 'timeout', 'internalservererror'))
+
+
+def call_gemini(prompt, files=None, *, model_name=None, stricter=False):
+    """Call one configured model, retrying transient failures at most three times."""
+    if not API_KEY:
+        raise RuntimeError('Gemini is not configured. Set GEMINI_API_KEY and retry.')
+    selected = model_name or Config.GEMINI_MODEL
+    model = genai.GenerativeModel(selected)
+    parts = [prompt]
+    if files:
+        parts.extend(files)
+    if stricter:
+        parts.append('Validation reminder: return every question exactly once, valid JSON only, and marks within the provided range.')
+    started = time.perf_counter()
+    last_error = None
+    for attempt in range(4):
+        try:
+            response = model.generate_content(
+                parts,
+                generation_config={
+                    'temperature': 0.15,
+                    'response_mime_type': 'application/json',
+                    'response_schema': RESPONSE_SCHEMA,
+                },
+                request_options={'timeout': Config.GEMINI_TIMEOUT_SECONDS},
+            )
+            if not response or not response.text:
+                raise ValueError('Gemini returned an empty response.')
+            parsed = json.loads(response.text)
+            usage = getattr(response, 'usage_metadata', None)
+            token_count = getattr(usage, 'total_token_count', None) if usage else None
+            logger.info('Gemini response model=%s latency_ms=%d total_tokens=%s', selected,
+                        int((time.perf_counter() - started) * 1000), token_count if token_count is not None else 'unavailable')
+            return parsed
+        except Exception as error:
+            last_error = error
+            if isinstance(error, ValueError) and 'empty response' in str(error).lower():
+                raise
+            if attempt >= 3 or not _transient(error):
+                break
+            delay = min(8.0, 0.6 * (2 ** attempt)) + random.uniform(0.05, 0.45)
+            logger.warning('Gemini transient failure model=%s attempt=%d retry_in=%.2fs', selected, attempt + 1, delay)
+            time.sleep(delay)
+    raise RuntimeError(f'Gemini model {selected} failed after retries: {last_error}') from last_error
+
+
+def _prompt_for(questions, marking_scheme):
+    rubric = []
+    for index, question in enumerate(questions):
+        rubric.append({
+            'q_no': question.get('q_no', index + 1),
+            'question': question.get('question') or question.get('question_text', ''),
+            'max_marks': question.get('max_marks', question.get('marks', 0)),
+            'model_answer': question.get('model_answer', ''),
+            'key_points': question.get('keywords', []),
+        })
+    extra = f'Faculty marking scheme: {marking_scheme}' if isinstance(marking_scheme, str) and marking_scheme else ''
+    return f"""Evaluate a student's answer script using the rubric below.
+{extra}
+For every rubric row, return one question object with q_no, marks, extracted_answer,
+feedback, confidence (0 to 1), matched_points, and missing_points. Marks must be
+numeric and between 0 and that question's max_marks. Use the key points as rubric
+criteria, distinguish missing from incorrect concepts, and do not infer identity.
+Return overall_feedback with summary, strengths, weaknesses, and suggestions.
+Rubric JSON: {json.dumps(rubric, ensure_ascii=False)}"""
+
+
+def _valid_result(result, questions):
+    if not isinstance(result, dict) or not isinstance(result.get('questions'), list): return False
+    submitted = result['questions']
+    expected = {str(question.get('q_no', index + 1)): question for index, question in enumerate(questions)}
+    found = {}
+    for row in submitted:
+        if not isinstance(row, dict): return False
+        key = str(row.get('q_no', ''))
+        if key in found or key not in expected: return False
+        try: marks, confidence = float(row['marks']), float(row['confidence'])
+        except (KeyError, TypeError, ValueError): return False
+        maximum = float(expected[key].get('max_marks', expected[key].get('marks', 0)) or 0)
+        if not 0 <= marks <= maximum or not 0 <= confidence <= 1: return False
+        if not isinstance(row.get('feedback'), str) or not isinstance(row.get('extracted_answer'), str): return False
+        found[key] = True
+    return len(found) == len(expected)
+
+
+def _input_parts(student_content, file_path, file_type):
+    if student_content:
+        return [f'Student answer text (identifiers removed where recognized):\n{student_content}']
+    if not file_path or not os.path.isfile(file_path):
+        raise ValueError('No readable answer content was provided for evaluation.')
+    mime_type = {'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg'}.get(file_type, 'application/octet-stream')
+    with open(file_path, 'rb') as source:
+        return [{'mime_type': mime_type, 'data': source.read()}]
+
 
 def evaluate_with_gemini(student_content, questions, file_path=None, file_type=None, marking_scheme=None):
-    """
-    Evaluates student's answer against a list of questions using Google Gemini.
-    Can take either extracted text or a file path (multimodal).
-    
-    Args:
-        student_content (str): Text extracted from student's PDF/Image (if available)
-        questions (list): List of { 'question_text': str, 'model_answer': str, 'marks': int }
-        file_path (str): Optional path to the PDF/Image file for multimodal extraction
-        file_type (str): Optional file extension (pdf, png, jpg, jpeg)
-        marking_scheme (str): Optional grading rubric/marking scheme provided by faculty
-        
-    Returns:
-        dict: {
-            'extracted_answers': [str, ...],
-            'suggested_marks': [float, ...],
-            'reasoning': str
-        }
-    """
-    if not model:
-        logging.error("Gemini Model not initialized. Check API Key.")
-        return None
-
-    # Construct the questions prompt
-    questions_formatted = ""
-    for idx, q in enumerate(questions):
-        questions_formatted += f"Question {idx+1}: {q['question_text']}\n"
-        questions_formatted += f"Model Answer {idx+1}: {q['model_answer']}\n"
-        questions_formatted += f"Max Marks {idx+1}: {q['marks']}\n\n"
-
-    marking_scheme_formatted = f"\n### Marking Scheme / Rubric:\n{marking_scheme}\n" if marking_scheme else ""
-
-    prompt = f"""
-    You are an expert academic evaluator. You are provided with a student's answer script 
-    and a list of questions with their model answers.
-    {marking_scheme_formatted}
-    Your task is to:
-    1. Identify and extract the student's answer for each question from the provided content.
-    2. Evaluate each extracted answer against the model answer with high precision.
-    3. Suggest marks for each answer based on accuracy, completeness, and conceptual clarity (on a scale from 0 to Max Marks).
-    4. Provide detailed qualitative feedback:
-       - Strengths: What concepts did the student explain well? (Minimum 3 points)
-       - Weaknesses: What specific details or key terms are missing? (Minimum 3 points)
-       - Suggestions: Actionable tips to improve the specific answer. (Minimum 3 points)
-    5. Keywords: Identify the technical key terms that the student successfully used.
-
-    ### Questions & Model Answers:
-    {questions_formatted}
-
-    ### Instructions:
-    - If it's a file (PDF/Image), perform deep internal OCR to see the student's handwriting.
-    - If a student hasn't attempted a question, return an empty string for the extracted answer and 0 for marks.
-    - Be fair but strict. Handle minor handwriting/OCR errors gracefully.
-    - Focus on technical accuracy and conceptual depth.
-    - Return the response STRICTLY as a JSON object in the following format:
-    {{
-        "extracted_answers": ["answer for Q1", "answer for Q2", ...],
-        "suggested_marks": [marks for Q1, marks for Q2, ...],
-        "strengths": ["point 1", "point 2", "point 3", ...],
-        "weaknesses": ["point 1", "point 2", "point 3", ...],
-        "suggestions": ["point 1", "point 2", "point 3", ...],
-        "matched_keywords": ["keyword1", "keyword2", ...],
-        "reasoning": "Overall comprehensive evaluation summary"
-    }}
-    """
-
-    try:
-        inputs = []
-        inputs.append(prompt)
-        
-        # Add file if provided
-        if file_path and os.path.exists(file_path):
-            if file_type == 'pdf':
-                mime_type = 'application/pdf'
-            elif file_type in ['png', 'jpg', 'jpeg']:
-                mime_type = f'image/{file_type.replace("jpg", "jpeg")}'
-            else:
-                mime_type = 'text/plain' # Fallback for txt
-                
-            with open(file_path, "rb") as f:
-                file_data = f.read()
-                
-            inputs.append({
-                "mime_type": mime_type,
-                "data": file_data
-            })
-        elif student_content:
-            inputs.append(f"### Student Content (Text extracted via OCR):\n{student_content}")
-        else:
-            logging.error("Neither text nor file_path provided to Gemini for evaluation.")
-            return None
-
-        response = model.generate_content(
-            inputs,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        
-        if response and response.text:
-            result = json.loads(response.text)
-            return result
-    except Exception as e:
-        logging.error(f"Gemini Evaluation Error: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    return None
+    if not API_KEY:
+        raise RuntimeError('Gemini is not configured. Set GEMINI_API_KEY and retry.')
+    prompt = _prompt_for(questions, marking_scheme)
+    files = _input_parts(student_content, file_path, file_type)
+    failures = []
+    for model_name in (Config.GEMINI_MODEL, Config.GEMINI_FALLBACK_MODEL):
+        if not model_name or model_name in failures: continue
+        try:
+            result = call_gemini(prompt, files, model_name=model_name)
+            if not _valid_result(result, questions):
+                result = call_gemini(prompt, files, model_name=model_name, stricter=True)
+            if _valid_result(result, questions): return result
+            raise ValueError('Gemini returned missing questions, invalid confidence, or marks outside the rubric.')
+        except Exception as error:
+            failures.append(model_name)
+            logger.warning('Gemini model did not produce a valid rubric result model=%s error=%s', model_name, error)
+    raise RuntimeError('The AI service could not return a complete valid evaluation. Please retry later.')

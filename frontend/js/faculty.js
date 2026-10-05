@@ -94,12 +94,15 @@ async function loadfacultyDashboard() {
 
         const submissions = subData.submissions || [];
         const reports = reportData.reports || [];
+        const reviewQueue = document.getElementById('review-queue-list');
+        const flagged = submissions.filter(submission => submission.status === 'needs_review');
+        if (reviewQueue) reviewQueue.innerHTML = flagged.length ? flagged.slice(0, 8).map(submission => `<div class="review-queue-row"><span><strong>${escapeHtml(submission.student_name)}</strong><small>${escapeHtml(submission.assignment_title)} · ${formatDate(submission.submitted_at)}</small></span><a class="btn btn-sm btn-outline-warning" href="/faculty/edit_evaluation.html?submission_id=${encodeURIComponent(submission.id)}">Review</a></div>`).join('') : '<p class="text-muted small mb-0">No submissions need review.</p>';
 
         // Stats with animation
         animatefacultyValue('stat-assignments', reports.length);
         animatefacultyValue('stat-submissions', submissions.length);
 
-        const evaluated = submissions.filter(s => s.status === 'evaluated');
+        const evaluated = submissions.filter(s => ['done', 'needs_review', 'evaluated'].includes(s.status));
         animatefacultyValue('stat-evaluated', evaluated.length);
 
         if (evaluated.length > 0) {
@@ -110,7 +113,7 @@ async function loadfacultyDashboard() {
         }
 
         // Auto-refresh if any submissions are still processing
-        const hasPending = submissions.some(s => s.status === 'processing' || s.status === 'pending');
+        const hasPending = submissions.some(s => ['queued', 'processing', 'pending'].includes(s.status));
         if (hasPending) {
             clearTimeout(_facultyRefreshTimer); // Clear existing to avoid duplicates
             _facultyRefreshTimer = setTimeout(() => loadfacultyDashboard(), 3000);
@@ -126,7 +129,7 @@ async function loadfacultyDashboard() {
                 <tr>
                     <td colspan="6">
                         <div class="empty-state">
-                            <div class="empty-state-icon">📚</div>
+                            <div class="empty-state-icon" aria-hidden="true"><svg class="theme-empty-icon" viewBox="0 0 48 48"><path d="M8 10.5A4.5 4.5 0 0 1 12.5 6H40v30H12.5A4.5 4.5 0 0 0 8 40.5v-30Z"/><path d="M8 34.5a4.5 4.5 0 0 1 4.5-4.5H40M17 14h15M17 20h15"/></svg></div>
                             <div class="empty-state-title">No submissions yet</div>
                             <div class="empty-state-text">Student submissions will appear here once they start submitting.</div>
                         </div>
@@ -136,7 +139,7 @@ async function loadfacultyDashboard() {
         }
 
         tbody.innerHTML = submissions.slice(0, 20).map((s, idx) => {
-            const isProcessing = s.status === 'processing';
+            const isProcessing = ['queued', 'processing'].includes(s.status);
             return `
             <tr style="animation: cardSlideUp 0.3s ease-out ${idx * 0.05}s both">
                 <td>${escapeHtml(s.student_name)}</td>
@@ -150,13 +153,13 @@ async function loadfacultyDashboard() {
                         </div>
                         <div class="progress-step" style="font-size:0.7rem">${escapeHtml(s.progress_step) || ''}</div>
                     </div>` : ''}
-                    ${s.status === 'error' && s.error_message ? `
+                    ${s.status === 'failed' && s.error_message ? `
                     <div class="progress-step text-danger mt-1" style="font-size:0.7rem">${escapeHtml(s.error_message)}</div>
                     ` : ''}
                 </td>
-                <td>${s.status === 'evaluated' ? (s.similarity_score * 100).toFixed(1) + '%' : '-'}</td>
-                <td>${s.status === 'evaluated' ? s.marks_obtained + '/' + s.total_marks : '-'}</td>
-                <td>${formatDate(s.submitted_at)}</td>
+                <td>${['done', 'needs_review', 'evaluated'].includes(s.status) ? (s.similarity_score * 100).toFixed(1) + '%' : '-'}</td>
+                <td>${['done', 'needs_review', 'evaluated'].includes(s.status) ? s.marks_obtained + '/' + s.total_marks : '-'}</td>
+                <td>${formatDate(s.submitted_at)} ${s.status === 'needs_review' ? `<a class="btn btn-sm btn-outline-warning ms-1" href="/faculty/edit_evaluation.html?submission_id=${encodeURIComponent(s.id)}">Review</a>` : ''}</td>
             </tr>`;
         }).join('');
 
@@ -174,6 +177,19 @@ function setupAssignmentForm() {
 
     const studentCopiesInput = document.getElementById('student-copies');
     const createBtn = document.getElementById('create-btn');
+    const rubricRows = document.getElementById('rubric-rows');
+    let questionIndex = 0;
+    const addRubricRow = (maximum = 0) => {
+        const id = questionIndex++;
+        const row = document.createElement('fieldset'); row.className = 'rubric-row'; row.dataset.rubricRow = '';
+        row.innerHTML = `<legend>Question ${id + 1}</legend><label>Question<input class="form-control rubric-question"></label><label>Max marks<input class="form-control rubric-marks" type="number" min="0" step="0.5" value="${maximum}"></label><label>Model answer / key points<textarea class="form-control rubric-answer" rows="3"></textarea></label><label>Keywords (comma separated)<input class="form-control rubric-keywords"></label><button type="button" class="btn btn-sm btn-outline-danger remove-rubric" aria-label="Remove question"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg><span>Remove</span></button>`;
+        rubricRows?.append(row);
+    };
+    if (rubricRows) {
+        addRubricRow(Number(document.getElementById('total-marks')?.value) || 100);
+        document.getElementById('add-rubric-row')?.addEventListener('click', () => addRubricRow());
+        rubricRows.addEventListener('click', event => { if (event.target.closest('.remove-rubric')) { event.target.closest('[data-rubric-row]').remove(); [...rubricRows.children].forEach((row, index) => row.querySelector('legend').textContent = `Question ${index + 1}`); } });
+    }
 
     if (studentCopiesInput && createBtn) {
         studentCopiesInput.addEventListener('change', () => {
@@ -195,7 +211,7 @@ function setupAssignmentForm() {
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const btn = document.getElementById('create-btn');
+        const btn = e.submitter || document.getElementById('create-btn');
         const originalText = btn.innerHTML;
         btn.disabled = true;
         btn.textContent = 'Processing...';
@@ -205,7 +221,23 @@ function setupAssignmentForm() {
             formData.append('title', document.getElementById('title').value);
             formData.append('subject', document.getElementById('subject').value);
             formData.append('total_marks', document.getElementById('total-marks').value || '100');
-            formData.append('model_answer', document.getElementById('model-answer').value);
+            const rubric = [...(rubricRows?.querySelectorAll('[data-rubric-row]') || [])].map((row, index) => ({
+                q_no: index + 1,
+                question: row.querySelector('.rubric-question').value.trim(),
+                max_marks: Number(row.querySelector('.rubric-marks').value),
+                model_answer: row.querySelector('.rubric-answer').value.trim(),
+                keywords: row.querySelector('.rubric-keywords').value.split(',').map(value => value.trim()).filter(Boolean),
+            })).filter(row => row.question || row.model_answer || row.max_marks > 0);
+            const totalMarks = Number(document.getElementById('total-marks').value || 0);
+            const hasRubric = rubric.length > 0 && rubric.every(row => row.question && row.model_answer && row.max_marks > 0);
+            const status = e.submitter?.dataset.status || 'published';
+            if (status === 'published' && !hasRubric && !document.getElementById('model-answer').value.trim()) throw new Error('Add a complete rubric question or a model answer before publishing.');
+            if (status === 'published' && hasRubric && Math.abs(rubric.reduce((sum, row) => sum + row.max_marks, 0) - totalMarks) > .001) throw new Error('Rubric question marks must add up to the assignment maximum.');
+            if (hasRubric) formData.append('rubric', JSON.stringify(rubric));
+            else formData.append('model_answer', document.getElementById('model-answer').value);
+            formData.append('description', document.getElementById('description')?.value || '');
+            formData.append('due_date', document.getElementById('due-date')?.value || '');
+            formData.append('status', status);
             
             const markingScheme = document.getElementById('marking-scheme');
             if (markingScheme) formData.append('marking_scheme', markingScheme.value);
@@ -223,6 +255,7 @@ function setupAssignmentForm() {
 
             showAlert(data.message || 'Assignment created successfully!', 'success');
             form.reset();
+            if (rubricRows) { rubricRows.innerHTML = ''; questionIndex = 0; addRubricRow(Number(document.getElementById('total-marks')?.value) || 100); }
             createBtn.textContent = 'Create Assignment';
             createBtn.classList.remove('btn-success');
             createBtn.classList.add('btn-primary');
@@ -291,7 +324,7 @@ async function loadReports() {
             container.innerHTML = `
                 <div class="content-card">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📊</div>
+                        <div class="empty-state-icon" aria-hidden="true"><svg class="theme-empty-icon" viewBox="0 0 48 48"><path d="M7 39h34M11 35V23h7v12M21 35V13h7v22M31 35V19h7v16"/><path d="m10 17 10-7 8 3 10-8"/></svg></div>
                         <div class="empty-state-title">No assignments yet</div>
                         <div class="empty-state-text">Create your first assignment to start receiving submissions.</div>
                         <a href="/faculty/upload_model.html" class="btn btn-primary">Create Assignment</a>
@@ -316,6 +349,7 @@ async function loadReports() {
                             </svg>
                             Download Excel
                         </button>
+                        <a class="download-btn" href="#" onclick="event.stopPropagation(); downloadAssignmentCSV(event, '${r.assignment_id}')" title="Download CSV">Export CSV</a>
                         <button class="expand-btn" title="View Details">
                             <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="6 9 12 15 18 9"></polyline>
@@ -345,6 +379,7 @@ async function loadReports() {
                         <div class="small text-muted">Avg Marks</div>
                     </div>
                 </div>
+                <div class="assignment-analytics" id="analytics-${r.assignment_id}"><div class="text-muted small">Loading analytics…</div></div>
                 <div class="report-card-content">
                     <div class="report-card-body" id="report-body-${r.assignment_id}">
                         <div class="text-center py-3 text-muted">Loading submissions...</div>
@@ -352,6 +387,7 @@ async function loadReports() {
                 </div>
             </div>
         `).join('');
+        reports.forEach(report => loadAssignmentAnalytics(report.assignment_id));
 
     } catch (err) {
         container.innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
@@ -376,6 +412,37 @@ async function toggleReportCard(assignmentId) {
             renderSubmissionsTable(assignmentId, _reportSubmissions[assignmentId]);
         }
     }
+}
+
+async function loadAssignmentAnalytics(assignmentId) {
+    const host = document.getElementById(`analytics-${assignmentId}`);
+    if (!host) return;
+    try {
+        const data = await apiRequest(`/assignments/${assignmentId}/analytics`);
+        host.innerHTML = `<div class="analytics-inline"><div><h6>Score distribution</h6><canvas width="360" height="130" aria-label="Submission score distribution"></canvas></div><div><h6>Topics to review</h6>${data.per_question.length ? data.per_question.slice().sort((a,b) => a.average_percentage - b.average_percentage).slice(0,4).map(q => `<div class="topic-score"><span>Q${q.q_no} · ${escapeHtml(q.question || 'Question')}</span><strong>${q.average_percentage}%</strong></div>`).join('') : '<p class="text-muted small">No scored submissions yet.</p>'}<p class="small text-muted">${data.evaluated_count} of ${data.total_count} submissions evaluated</p></div></div>`;
+        const canvas = host.querySelector('canvas');
+        const ctx = canvas?.getContext('2d');
+        if (!ctx) return;
+        const max = Math.max(1, ...data.score_distribution.map(bin => bin.count));
+        const barWidth = canvas.width / data.score_distribution.length;
+        data.score_distribution.forEach((bin, index) => {
+            const height = (bin.count / max) * 86;
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#22d3ee';
+            ctx.fillRect(index * barWidth + 5, 100 - height, barWidth - 10, height);
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8b97b3';
+            ctx.font = '9px monospace'; ctx.fillText(`${index * 10}`, index * barWidth + 5, 118);
+        });
+    } catch (error) { host.textContent = 'Analytics are temporarily unavailable.'; }
+}
+
+async function downloadAssignmentCSV(event, assignmentId) {
+    event.preventDefault();
+    try {
+        const response = await fetch(`/api/assignments/${encodeURIComponent(assignmentId)}/export.csv`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        if (!response.ok) throw new Error('Could not export this assignment.');
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement('a'); link.href = url; link.download = `assignment-${assignmentId}.csv`; link.click(); URL.revokeObjectURL(url);
+    } catch (error) { showToast(error.message, 'error'); }
 }
 
 async function loadAssignmentSubmissions(assignmentId) {
@@ -420,14 +487,14 @@ function renderSubmissionsTable(assignmentId, submissions) {
                         <tr>
                             <td><strong>${escapeHtml(s.student_name)}</strong></td>
                             <td>
-                                <span class="badge-status badge-${s.status}">${s.status.toUpperCase()}</span>
-                                ${s.status === 'error' && s.error_message ? `<div class="small text-danger mt-1">${escapeHtml(s.error_message)}</div>` : ''}
+                                ${AppUI.StatusBadge.render(s.status)}
+                                ${s.status === 'failed' && s.error_message ? `<div class="small text-danger mt-1">${escapeHtml(s.error_message)}</div>` : ''}
                             </td>
-                            <td>${s.status === 'evaluated' ? (s.similarity_score * 100).toFixed(1) + '%' : '-'}</td>
-                            <td>${s.status === 'evaluated' ? s.marks_obtained + '/' + s.total_marks : '-'}</td>
+                            <td>${['done', 'needs_review', 'evaluated'].includes(s.status) ? (s.similarity_score * 100).toFixed(1) + '%' : '-'}</td>
+                            <td>${['done', 'needs_review', 'evaluated'].includes(s.status) ? s.marks_obtained + '/' + s.total_marks : '-'}</td>
                             <td>${s.faculty_reviewed ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>
                             <td>
-                                ${s.status === 'evaluated' ? `
+                                ${['done', 'needs_review', 'evaluated'].includes(s.status) ? `
                                 <a href="/faculty/edit_evaluation.html?submission_id=${s.id}" class="btn btn-sm btn-outline-primary">
                                     <svg width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
                                       <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
@@ -465,7 +532,16 @@ async function setupNewEvaluationUI() {
         const data = await apiRequest(`/faculty/evaluation/${submissionId}`);
         
         studentDisplay.textContent = `Submission ID: ${data.submission_id}`;
-        pdfViewer.src = data.pdf_url || '';
+        if (data.pdf_url) {
+            const fileResponse = await fetch(data.pdf_url, { headers: { Authorization: `Bearer ${getToken()}` } });
+            if (fileResponse.ok) {
+                const objectUrl = URL.createObjectURL(await fileResponse.blob());
+                pdfViewer.dataset.objectUrl = objectUrl;
+                pdfViewer.src = objectUrl;
+                window.addEventListener('beforeunload', () => URL.revokeObjectURL(objectUrl), { once: true });
+            }
+            else pdfViewer.src = 'about:blank';
+        }
         commentsArea.value = data.faculty_comments || '';
         
         const questions = data.questions || [];
@@ -503,6 +579,7 @@ async function setupNewEvaluationUI() {
                         </div>
                     </td>
                     <td class="max-marks-col">${max}</td>
+                    <td><span class="confidence-pill">Confidence ${Math.round((res.confidence ?? 0) * 100)}%</span><label class="visually-hidden" for="feedback-${idx}">Feedback for question ${q_num}</label><textarea class="form-control faculty-feedback" id="feedback-${idx}" data-idx="${idx}" rows="3">${escapeHtml(res.feedback || '')}</textarea><div class="small text-muted mt-1">AI feedback is editable; the original AI result is preserved.</div></td>
                 </tr>
             `;
         }).join('');
@@ -522,25 +599,18 @@ async function setupNewEvaluationUI() {
             btn.disabled = true;
             btn.textContent = 'Saving...';
 
-            const finalFacultyMarks = {};
-            const finalEditedAnswers = {};
-
-            tbody.querySelectorAll('.marks-input').forEach(input => {
-                finalFacultyMarks[input.dataset.idx] = parseFloat(input.value) || 0;
-            });
-
-            tbody.querySelectorAll('.student-ans-textarea').forEach(area => {
-                finalEditedAnswers[area.dataset.idx] = area.value.trim();
-            });
+            const reviewedQuestions = [...tbody.querySelectorAll('.marks-input')].map(input => ({
+                q_no: Number(input.dataset.idx) + 1,
+                marks: Number(input.value),
+                feedback: tbody.querySelector(`.faculty-feedback[data-idx="${input.dataset.idx}"]`)?.value.trim() || '',
+            }));
 
             try {
-                await apiRequest('/faculty/evaluation/update', {
-                    method: 'POST',
+                await apiRequest(`/submissions/${submissionId}/review`, {
+                    method: 'PUT',
                     body: JSON.stringify({
-                        submission_id: submissionId,
-                        faculty_marks: finalFacultyMarks,
-                        edited_answers: finalEditedAnswers,
-                        faculty_comments: commentsArea.value.trim()
+                        questions: reviewedQuestions,
+                        overall_feedback: commentsArea.value.trim()
                     })
                 });
 

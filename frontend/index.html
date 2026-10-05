@@ -7,17 +7,12 @@
     <title>AI Answer Evaluator — Login</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="/css/tokens.css">
+    <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
-    <!-- Theme Toggle -->
-    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
-        <span class="icon moon-icon">🌙</span>
-        <span class="icon sun-icon">☀️</span>
-    </button>
-
     <div class="auth-container">
         <div class="auth-card">
-            <div class="logo">📝</div>
             <h2>AI Answer Evaluator</h2>
             <p class="subtitle">Automated Answer Script Evaluation System</p>
 
@@ -34,7 +29,7 @@
                     <label for="login-password" class="form-label">Password</label>
                     <div class="password-wrapper">
                         <input type="password" class="form-control" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
-                        <button type="button" class="password-toggle" aria-label="Toggle password visibility">👁️‍🗨️</button>
+                        <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path d="m4 4 16 16"/></svg></button>
                     </div>
                 </div>
                 <button type="submit" class="btn btn-primary w-100 py-2" id="login-btn">
@@ -60,7 +55,7 @@
                     <label for="reg-password" class="form-label">Password</label>
                     <div class="password-wrapper">
                         <input type="password" class="form-control" id="reg-password" placeholder="Min 6 characters" required minlength="6" autocomplete="new-password">
-                        <button type="button" class="password-toggle" aria-label="Toggle password visibility">👁️‍🗨️</button>
+                        <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path d="m4 4 16 16"/></svg></button>
                     </div>
                 </div>
                 <div class="mb-3">
@@ -81,7 +76,16 @@
         </div>
     </div>
 
+    <div class="auth-info" aria-label="About AutoGrade AI">
+        <button class="auth-info-trigger" type="button" aria-label="About this application" aria-expanded="false" aria-controls="auth-info-panel">i</button>
+        <section class="auth-info-panel" id="auth-info-panel" aria-label="About AutoGrade AI">
+            <h2>About AutoGrade AI</h2>
+            <p>AutoGrade AI helps faculty create assignments and evaluate student answer scripts with AI-assisted scoring and feedback. Students can submit their work and track results, while administrators manage accounts and system activity.</p>
+        </section>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/components.js"></script>
     <script src="js/auth.js"></script>
 </body>
 </html>

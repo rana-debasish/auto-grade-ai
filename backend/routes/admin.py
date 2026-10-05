@@ -104,9 +104,11 @@ def system_stats():
             'total_faculty': (user_model.count(role='faculty') or 0) + (user_model.count(role='teacher') or 0),
             'total_assignments': assignment_model.count() or 0,
             'total_submissions': submission_model.count() or 0,
-            'evaluated_submissions': submission_model.count(status='evaluated') or 0,
-            'pending_submissions': submission_model.count(status='pending') or 0,
-            'error_submissions': submission_model.count(status='error') or 0,
+            'evaluated_submissions': submission_model.count(status='done') or 0,
+            'needs_review_submissions': submission_model.count(status='needs_review') or 0,
+            'pending_submissions': submission_model.count(status='queued') or 0,
+            'processing_submissions': submission_model.count(status='processing') or 0,
+            'error_submissions': submission_model.count(status='failed') or 0,
             'average_similarity': round(submission_model.average_score() or 0.0, 2),
         }
         return jsonify({'stats': stats}), 200
@@ -198,7 +200,13 @@ def list_all_submissions():
     assignment_model = AssignmentModel(db)
     user_model = UserModel(db)
 
-    submissions = submission_model.get_all(status=status)
+    assignment_id = request.args.get('assignment_id')
+    try:
+        page = max(1, int(request.args['page'])) if 'page' in request.args else None
+        page_size = max(1, min(int(request.args.get('page_size', 25)), 100))
+    except ValueError:
+        return jsonify({'error': 'page and page_size must be integers.'}), 400
+    submissions = submission_model.get_all(status=status, assignment_id=assignment_id, page=page, page_size=page_size)
 
     # Enrich with student name and assignment title
     for s in submissions:
@@ -208,7 +216,29 @@ def list_all_submissions():
         s['assignment_title'] = assignment['title'] if assignment else 'Unknown'
         s['total_marks'] = assignment['total_marks'] if assignment else 0
 
-    return jsonify({'submissions': submissions}), 200
+    total = submission_model.count(status, assignment_id)
+    return jsonify({'submissions': submissions, 'pagination': {'page': page or 1, 'page_size': page_size, 'total': total, 'pages': (total + page_size - 1) // page_size}}), 200
+
+
+@admin_bp.route('/retry-failed', methods=['POST'])
+@jwt_required()
+def retry_failed():
+    err = _require_admin()
+    if err: return err
+    from models.assignment import AssignmentModel
+    from models.submission import SubmissionModel
+    from routes.submissions import enqueue_retry
+    from app import db
+    submissions = SubmissionModel(db)
+    assignments = AssignmentModel(db)
+    failed = submissions.get_all(status='failed')
+    queued = 0
+    unavailable = 0
+    for item in failed:
+        ok, _ = enqueue_retry(submissions, assignments, item)
+        if ok: queued += 1
+        else: unavailable += 1
+    return jsonify({'message': f'{queued} failed evaluation(s) queued for retry.', 'queued': queued, 'unavailable': unavailable}), 202
 
 
 @admin_bp.route('/submissions/<submission_id>', methods=['DELETE'])

@@ -48,7 +48,10 @@ class UserModel:
         return None, 'Invalid email or password'
 
     def get_by_id(self, user_id):
-        user = self.collection.find_one({'_id': ObjectId(user_id)})
+        try:
+            user = self.collection.find_one({'_id': ObjectId(user_id)})
+        except Exception:
+            return None
         return self._serialize(user) if user else None
 
     def get_all(self, role=None):
@@ -87,6 +90,6 @@ class UserModel:
             'name': user['name'],
             'email': user['email'],
             'role': 'faculty' if user['role'] == 'teacher' else user['role'],
-            'created_at': user['created_at'].isoformat(),
+            'created_at': user.get('created_at').isoformat() if user.get('created_at') else None,
             'is_active': user.get('is_active', True),
         }

@@ -204,14 +204,11 @@ let _currentAdminTab = 'users';
 let _allUsers = [];
 let _allAssignments = [];
 let _allSubmissions = [];
+const _loadedAdminTabs = new Set();
 
 function switchAdminTab(tabName) {
+    if (!['users', 'assignments', 'submissions'].includes(tabName)) tabName = 'users';
     _currentAdminTab = tabName;
-    
-    // Update tab buttons
-    document.querySelectorAll('.admin-tab').forEach(tab => {
-        tab.classList.toggle('active', tab.textContent.toLowerCase().includes(tabName));
-    });
     
     // Update panels
     document.querySelectorAll('.admin-panel').forEach(panel => {
@@ -220,12 +217,21 @@ function switchAdminTab(tabName) {
     document.getElementById(`panel-${tabName}`)?.classList.add('active');
     
     // Load data for the tab
-    if (tabName === 'assignments' && _allAssignments.length === 0) {
-        loadAllAssignments();
-    } else if (tabName === 'submissions' && _allSubmissions.length === 0) {
-        loadAllSubmissions();
+    if (!_loadedAdminTabs.has(tabName)) {
+        _loadedAdminTabs.add(tabName);
+        if (tabName === 'users') loadUsers();
+        else if (tabName === 'assignments') {
+            loadfacultyFilter();
+            loadAllAssignments();
+        } else loadAllSubmissions();
     }
 }
+
+window.addEventListener('hashchange', () => {
+    if (location.pathname === '/admin/manage.html') {
+        switchAdminTab(location.hash.replace('#panel-', ''));
+    }
+});
 
 // ---- Filter Functions ----
 
@@ -319,7 +325,7 @@ function renderAssignmentsTable(assignments) {
             <tr>
                 <td colspan="7">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📝</div>
+                        <div class="empty-state-icon" aria-hidden="true"><svg class="theme-empty-icon" viewBox="0 0 48 48"><path d="M12 7h17l8 8v26H12z"/><path d="M29 7v9h8M18 24h13M18 30h13M18 36h8"/><path d="m31 7 6 7"/></svg></div>
                         <div class="empty-state-title">No assignments found</div>
                         <div class="empty-state-text">No assignments match your current filter.</div>
                     </div>
@@ -375,7 +381,7 @@ function renderSubmissionsTable(submissions) {
             <tr>
                 <td colspan="7">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📄</div>
+                        <div class="empty-state-icon" aria-hidden="true"><svg class="theme-empty-icon" viewBox="0 0 48 48"><path d="M12 7h17l8 8v26H12z"/><path d="M29 7v9h8M18 24h13M18 30h13M18 36h8"/></svg></div>
                         <div class="empty-state-title">No submissions found</div>
                         <div class="empty-state-text">No submissions match your current filter.</div>
                     </div>

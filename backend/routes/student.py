@@ -12,9 +12,13 @@ import os
 import uuid
 import threading
 import time
+import mimetypes
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_limiter.util import get_remote_address
+from werkzeug.utils import secure_filename
+from app import limiter
 
 
 from config import Config
@@ -52,11 +56,6 @@ def _get_db():
     return db
 
 
-def _get_semaphore():
-    from app import evaluation_semaphore
-    return evaluation_semaphore
-
-
 def _require_student():
     claims = get_jwt()
     if claims.get('role') != 'student':
@@ -65,8 +64,29 @@ def _require_student():
 
 
 def _allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
+    safe = secure_filename(filename or '')
+    return '.' in safe and safe.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
+
+
+def _valid_file_signature(file, extension):
+    signatures = {
+        'pdf': lambda data: data.startswith(b'%PDF-'),
+        'png': lambda data: data.startswith(b'\x89PNG\r\n\x1a\n'),
+        'jpg': lambda data: data.startswith(b'\xff\xd8\xff'),
+        'jpeg': lambda data: data.startswith(b'\xff\xd8\xff'),
+    }
+    stream = file.stream
+    position = stream.tell()
+    head = stream.read(16)
+    stream.seek(position)
+    return signatures[extension](head)
+
+
+def _upload_user_key():
+    try:
+        return str(get_jwt_identity())
+    except Exception:
+        return get_remote_address()
 
 
 @student_bp.route('/assignments', methods=['GET'])
@@ -91,6 +111,7 @@ def list_assignments():
 
 @student_bp.route('/submit', methods=['POST'])
 @jwt_required()
+@limiter.limit(Config.UPLOAD_RATE_LIMIT, key_func=_upload_user_key)
 def submit_answer():
     user_id, err = _require_student()
     if err:
@@ -116,22 +137,29 @@ def submit_answer():
         return jsonify({'error': 'No file selected'}), 400
 
     if not _allowed_file(file.filename):
-        return jsonify({'error': 'File type not allowed. Use PDF, PNG, JPG, or TXT'}), 400
+        return jsonify({'error': 'File type not allowed. Use PDF, PNG, or JPG.'}), 400
 
-    # Save file
-    ext = file.filename.rsplit('.', 1)[1].lower()
+    safe_name = secure_filename(file.filename)
+    ext = safe_name.rsplit('.', 1)[1].lower()
+    if not _valid_file_signature(file, ext):
+        return jsonify({'error': 'The file content does not match its extension. Upload a valid PDF or image.'}), 400
+    file.stream.seek(0, os.SEEK_END)
+    file_size = file.stream.tell()
+    file.stream.seek(0)
+    if file_size <= 0:
+        return jsonify({'error': 'The uploaded file is empty.'}), 400
+    if file_size > Config.MAX_CONTENT_LENGTH:
+        return jsonify({'error': 'File exceeds the 10 MB upload limit.'}), 413
+
     filename = f"{uuid.uuid4().hex}.{ext}"
     file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
+    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
     file.save(file_path)
 
     # Create submission record
     from models.submission import SubmissionModel
     submission_model = SubmissionModel(_get_db())
     submission = submission_model.create(user_id, assignment_id, file_path, ext)
-    submission_model.set_status(submission['id'], 'processing', error_message='')
-    submission_model.set_progress(submission['id'], 1, 'Queued for evaluation...')
-
-    # Run evaluation pipeline in a background thread so the request returns immediately
     from services.evaluation_manager import run_evaluation_async
     app = current_app._get_current_object()
     run_evaluation_async(
@@ -164,15 +192,14 @@ def retry_evaluation(submission_id):
     if not submission or submission['student_id'] != user_id:
         return jsonify({'error': 'Submission not found'}), 404
 
-    if submission['status'] == 'evaluated':
+    if submission['status'] in ('done', 'needs_review'):
         return jsonify({'message': 'Already evaluated'}), 200
+    if submission['status'] in ('processing', 'queued'):
+        return jsonify({'message': 'Evaluation is already queued or running.', 'status': submission['status']}), 202
 
     assignment = assignment_model.get_by_id(submission['assignment_id'])
-    if not assignment:
+    if not assignment or assignment.get('status') == 'draft':
         return jsonify({'error': 'Assignment not found'}), 404
-
-    submission_model.set_status(submission_id, 'processing', error_message='')
-    submission_model.set_progress(submission_id, 1, 'Queued for re-evaluation...')
 
     from services.evaluation_manager import run_evaluation_async
     app = current_app._get_current_object()
@@ -198,9 +225,14 @@ def view_results():
     submission_model = SubmissionModel(_get_db())
     assignment_model = AssignmentModel(_get_db())
 
-    submissions = submission_model.get_by_student(user_id)
-    # Filter out teacher-uploaded private evaluations
-    submissions = [s for s in submissions if not s.get('is_private', False)]
+    try:
+        page = max(1, int(request.args['page'])) if 'page' in request.args else None
+        page_size = max(1, min(int(request.args.get('page_size', 25)), 100))
+    except ValueError:
+        return jsonify({'error': 'page and page_size must be integers.'}), 400
+    status_filter = request.args.get('status')
+    assignment_filter = request.args.get('assignment_id')
+    submissions = submission_model.get_by_student(user_id, page, page_size, status_filter, assignment_filter)
 
     # Enrich with assignment info
     for s in submissions:
@@ -209,4 +241,5 @@ def view_results():
         s['assignment_subject'] = assignment['subject'] if assignment else 'Unknown'
         s['total_marks'] = assignment['total_marks'] if assignment else 0
 
-    return jsonify({'results': submissions}), 200
+    total = submission_model.count_by_student(user_id, status_filter, assignment_filter)
+    return jsonify({'results': submissions, 'pagination': {'page': page or 1, 'page_size': page_size, 'total': total, 'pages': (total + page_size - 1) // page_size}}), 200

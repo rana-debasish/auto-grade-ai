@@ -63,10 +63,11 @@ async function loadDashboard() {
         const results = resultData.results || [];
 
         // Stats with animation
-        animateValue('stat-assignments', assignments.length);
+        const pendingAssignments = assignments.filter(a => !results.some(r => r.assignment_id === a.id)).length;
+        animateValue('stat-assignments', pendingAssignments);
         animateValue('stat-submitted', results.length);
 
-        const evaluated = results.filter(r => r.status === 'evaluated');
+        const evaluated = results.filter(r => ['done', 'needs_review', 'evaluated'].includes(r.status));
         if (evaluated.length > 0) {
             const avg = evaluated.reduce((sum, r) => sum + r.marks_obtained, 0) / evaluated.length;
             animateValue('stat-avg-score', avg.toFixed(1));
@@ -81,26 +82,27 @@ async function loadDashboard() {
                 <tr>
                     <td colspan="5">
                         <div class="empty-state">
-                            <div class="empty-state-icon">📚</div>
+                            <div class="empty-state-icon" aria-hidden="true"><svg class="theme-empty-icon" viewBox="0 0 48 48"><path d="M8 10.5A4.5 4.5 0 0 1 12.5 6H40v30H12.5A4.5 4.5 0 0 0 8 40.5v-30Z"/><path d="M8 34.5a4.5 4.5 0 0 1 4.5-4.5H40M17 14h15M17 20h15"/></svg></div>
                             <div class="empty-state-title">No assignments yet</div>
                             <div class="empty-state-text">Check back later for new assignments from your facultys.</div>
                         </div>
                     </td>
                 </tr>`;
-            return;
+        } else {
+            tbody.innerHTML = assignments.map((a, idx) => `
+                <tr style="animation: cardSlideUp 0.3s ease-out ${idx * 0.1}s both">
+                    <td><strong>${escapeHtml(a.title)}</strong></td>
+                    <td>${escapeHtml(a.subject)}</td>
+                    <td>${a.total_marks}</td>
+                    <td>${formatDueDate(a.due_date)}</td>
+                    <td><a href="/student/submit.html?assignment=${encodeURIComponent(a.id)}" class="btn btn-primary btn-sm">Submit</a></td>
+                </tr>`).join('');
         }
-
-        tbody.innerHTML = assignments.map((a, idx) => `
-            <tr style="animation: cardSlideUp 0.3s ease-out ${idx * 0.1}s both">
-                <td><strong>${escapeHtml(a.title)}</strong></td>
-                <td>${escapeHtml(a.subject)}</td>
-                <td>${a.total_marks}</td>
-                <td>${formatDate(a.created_at)}</td>
-                <td>
-                    <a href="/student/submit.html?assignment=${a.id}" class="btn btn-primary btn-sm">Submit</a>
-                </td>
-            </tr>
-        `).join('');
+        const recent = document.getElementById('recent-results');
+        if (recent) recent.innerHTML = results.length ? results.slice(0, 4).map(item => {
+            const scored = ['done', 'needs_review', 'evaluated'].includes(item.status);
+            return `<a class="recent-result" href="/student/submission.html?id=${encodeURIComponent(item.id)}"><span><strong>${escapeHtml(item.assignment_title || 'Assignment')}</strong><small>${escapeHtml(item.assignment_subject || '')} · ${formatDate(item.submitted_at)}</small></span><span>${scored ? AppUI.ScoreRing.render(item.marks_obtained, item.total_marks || 0, { size: 68 }) : AppUI.StatusBadge.render(item.status)}</span></a>`;
+        }).join('') : AppUI.EmptyState.render('No results yet', 'Submit an answer script to see evaluation progress here.', '<a href="/student/submit.html" class="btn btn-primary student-submit-cta">Submit Answer</a>');
 
     } catch (err) {
         console.error('Dashboard load error:', err);
@@ -177,6 +179,12 @@ function setupDragDropUpload() {
     const previewContainer = document.getElementById('upload-preview-container');
     
     if (!uploadZone || !fileInput) return;
+
+    if (window.AppUI?.FileDropzone) {
+        uploadZone.hidden = true;
+        AppUI.FileDropzone.mount(fileInput, { maxBytes: 10 * 1024 * 1024, onChange: file => { selectedFile = file; } });
+        return;
+    }
     
     // Click to upload
     uploadZone.addEventListener('click', () => fileInput.click());
@@ -215,16 +223,16 @@ function setupDragDropUpload() {
 }
 
 function handleFileSelect(file) {
-    const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'];
-    const maxSize = 8 * 1024 * 1024; // 8MB (must match backend MAX_CONTENT_LENGTH)
+    const validTypes = ['application/pdf', 'image/png', 'image/jpeg'];
+    const maxSize = 10 * 1024 * 1024;
     
     if (!validTypes.includes(file.type)) {
-        showToast('Invalid file type. Please upload PDF, PNG, JPG, or TXT files.', 'error');
+        showToast('Choose a PDF, PNG, or JPG file.', 'error');
         return;
     }
     
     if (file.size > maxSize) {
-        showToast('File is too large. Maximum size is 8MB.', 'error');
+        showToast('File is too large. Maximum size is 10 MB.', 'error');
         return;
     }
     
@@ -320,9 +328,7 @@ function setupSubmitForm() {
 
             overlay.classList.add('d-none');
             showToast('Answer submitted! Evaluation in progress...', 'success');
-            setTimeout(() => {
-                window.location.href = '/student/results.html';
-            }, 1500);
+            window.location.href = `/student/submission.html?id=${encodeURIComponent(data.submission.id)}`;
 
         } catch (err) {
             overlay.classList.add('d-none');
@@ -422,17 +428,17 @@ async function loadResults() {
             container.innerHTML = `
                 <div class="content-card">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📝</div>
+                        <div class="empty-state-icon" aria-hidden="true"><svg class="theme-empty-icon" viewBox="0 0 48 48"><path d="M12 7h17l8 8v26H12z"/><path d="M29 7v9h8M18 24h13M18 30h13M18 36h8"/></svg></div>
                         <div class="empty-state-title">No submissions yet</div>
                         <div class="empty-state-text">Submit an answer to see your results here.</div>
-                        <a href="/student/submit.html" class="btn btn-primary">Submit Answer</a>
+                        <a href="/student/submit.html" class="btn btn-primary student-submit-cta">Submit Answer</a>
                     </div>
                 </div>`;
             return;
         }
 
         // Auto-refresh if any submissions are still processing
-        const hasPending = results.some(r => r.status === 'processing' || r.status === 'pending');
+        const hasPending = results.some(r => ['queued', 'processing', 'pending'].includes(r.status));
         if (hasPending && !_resultsRefreshTimer) {
             _resultsRefreshTimer = setInterval(() => loadResults(), 3000);
         } else if (!hasPending && _resultsRefreshTimer) {
@@ -443,7 +449,7 @@ async function loadResults() {
         container.innerHTML = results.map(r => {
             const fb = r.feedback || {};
             const ka = fb.keyword_analysis || {};
-            const isEvaluated = r.status === 'evaluated';
+            const isEvaluated = ['done', 'needs_review', 'evaluated'].includes(r.status);
 
             return `
             <div class="content-card">
@@ -452,7 +458,7 @@ async function loadResults() {
                         <h5 class="mb-1">${escapeHtml(r.assignment_title || 'Assignment')}</h5>
                         <span class="text-muted small">${escapeHtml(r.assignment_subject || '')} | Submitted ${formatDate(r.submitted_at)}</span>
                     </div>
-                    <span class="badge-status badge-${r.status}">${r.status.toUpperCase()}</span>
+                    ${AppUI.StatusBadge.render(r.status)}
                 </div>
 
                 ${isEvaluated ? `
@@ -502,20 +508,11 @@ async function loadResults() {
                     ${ka.missing_keywords.map(k => `<span class="keyword-tag keyword-missing">${escapeHtml(k)}</span>`).join('')}
                     ` : ''}
                 </div>` : ''}
+
+                <a class="btn btn-outline-primary btn-sm mt-2" href="/student/submission.html?id=${encodeURIComponent(r.id)}">View submission details</a>
                 ` : `
-                ${r.status === 'processing' ? `
-                <div class="eval-progress">
-                    <div class="progress">
-                        <div class="progress-bar" role="progressbar" style="width: ${r.progress || 0}%">${r.progress || 0}%</div>
-                    </div>
-                    <div class="progress-step">${escapeHtml(r.progress_step) || 'Starting evaluation...'}</div>
-                </div>
-                ` : `
-                <p class="text-muted">${r.status === 'error' ? escapeHtml(r.error_message || 'Evaluation encountered an error.') : 'Waiting to start evaluation...'}</p>
-                `}
-                ${r.status === 'error' || r.status === 'pending' ? `
-                <button class="btn btn-sm btn-outline-primary mt-2" onclick="retryEvaluation('${r.id}')">Retry Evaluation</button>
-                ` : ''}
+                <p class="text-muted">${escapeHtml(r.progress_step || (r.status === 'failed' ? r.error_message : 'Waiting to start evaluation...'))}</p>
+                <a class="btn btn-outline-primary btn-sm" href="/student/submission.html?id=${encodeURIComponent(r.id)}">Track evaluation</a>
                 `}
             </div>`;
         }).join('');
@@ -558,4 +555,50 @@ async function retryEvaluation(submissionId) {
     } catch (err) {
         showAlert(err.message);
     }
+}
+
+function formatDueDate(iso) {
+    if (!iso) return 'No due date';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return 'Date unavailable';
+    const remaining = date.getTime() - Date.now();
+    const days = Math.ceil(remaining / 86400000);
+    const tone = remaining < 86400000 ? 'urgent' : days <= 2 ? 'soon' : '';
+    const label = remaining < 0 ? 'Past due' : remaining < 86400000 ? `${Math.max(1, Math.ceil(remaining / 3600000))} hours left` : days === 1 ? '1 day left' : `${days} days left`;
+    return `${escapeHtml(date.toLocaleDateString())} <span class="due-chip ${tone}">${label}</span>`;
+}
+
+async function loadSubmissionDetail() {
+    const root = document.getElementById('submission-detail');
+    if (!root) return;
+    const id = new URLSearchParams(location.search).get('id');
+    if (!id) { root.textContent = 'Submission ID is missing.'; return; }
+    let age = 0;
+    let stopped = false;
+    let fileObjectUrl = '';
+    window.addEventListener('beforeunload', () => { if (fileObjectUrl) URL.revokeObjectURL(fileObjectUrl); }, { once: true });
+    const render = submission => {
+        const status = submission.status;
+        const result = submission.final_result || {};
+        const questions = result.questions || [];
+        const busy = ['queued', 'processing'].includes(status);
+        root.innerHTML = `<section class="content-card"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div><span class="text-muted small">${escapeHtml(submission.assignment?.subject || '')}</span><h2>${escapeHtml(submission.assignment?.title || 'Submission')}</h2><span class="small text-muted">Submitted ${formatDate(submission.submitted_at)}</span></div>${AppUI.StatusBadge.render(status)}</div>${busy ? `${AppUI.Stepper.render(submission.stage, status)}<p>${escapeHtml(submission.progress_step || 'Reading your handwriting...')}</p>` : ''}${status === 'failed' ? `<p class="text-danger">${escapeHtml(submission.error || 'Evaluation failed.')}</p><button id="retry-detail" class="btn btn-primary">Retry evaluation</button>` : ''}${!busy && status !== 'failed' ? `<div class="detail-score">${AppUI.ScoreRing.render(result.total ?? submission.marks_obtained, submission.assignment?.total_marks || 0)}<div><strong>${submission.reviewed ? 'Reviewed by faculty' : 'Evaluation complete'}</strong>${submission.reviewed ? `<span class="status-badge status-done">Reviewed by faculty</span>` : ''}<p>${escapeHtml(result.overall_feedback?.summary || '')}</p></div></div><div class="table-responsive"><table class="table table-custom"><thead><tr><th>Question</th><th>Marks</th><th>Feedback</th><th>Confidence</th></tr></thead><tbody>${questions.map(q => `<tr><td>${escapeHtml(q.question || `Question ${q.q_no}`)}</td><td>${q.marks}/${q.max_marks}</td><td>${escapeHtml(q.feedback || '')}</td><td>${Math.round((q.confidence || 0) * 100)}%</td></tr>`).join('')}</tbody></table></div><div class="submission-source"><section><h3>Original answer</h3>${fileObjectUrl ? (['png','jpg','jpeg'].includes(submission.file_type) ? `<img class="submission-image" src="${fileObjectUrl}" alt="Original submitted answer">` : `<iframe class="submission-pdf" title="Original submitted answer" src="${fileObjectUrl}"></iframe>`) : '<p class="text-muted">File preview is unavailable.</p>'}</section><section><h3>Extracted text</h3><pre class="ocr-preview">${escapeHtml(submission.ocr_text || 'No text was extracted.')}</pre></section></div></section>` : ''}`;
+        root.querySelector('#retry-detail')?.addEventListener('click', async event => { AppUI.Button.setLoading(event.currentTarget, true, 'Queueing retry…'); try { await apiRequest(`/submissions/${id}/retry`, { method: 'POST' }); age = 0; poll(); } catch (error) { showToast(error.message, 'error'); AppUI.Button.setLoading(event.currentTarget, false); } });
+    };
+    const poll = async () => {
+        if (stopped) return;
+        try {
+            const { submission } = await apiRequest(`/submissions/${id}`);
+            if (!['queued', 'processing', 'failed'].includes(submission.status) && submission.file_url && !fileObjectUrl) {
+                const fileResponse = await fetch(submission.file_url, { headers: { Authorization: `Bearer ${getToken()}` } });
+                if (fileResponse.ok) { fileObjectUrl = URL.createObjectURL(await fileResponse.blob()); submission.file_object_url = fileObjectUrl; }
+            }
+            render(submission);
+            if (['queued', 'processing'].includes(submission.status)) {
+                age += age < 60 ? 2 : 5;
+                setTimeout(poll, age <= 60 ? 2000 : 5000);
+            } else stopped = true;
+        } catch (error) { root.textContent = error.message; stopped = true; }
+    };
+    poll();
 }
