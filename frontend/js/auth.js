@@ -7,7 +7,9 @@ const API_BASE = '/api';
 // ---- Theme Management ----
 
 function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
+    // Use dark for first-time visits and migrate the old implicit system default.
+    const storedTheme = localStorage.getItem('theme');
+    const savedTheme = !storedTheme || storedTheme === 'system' ? 'dark' : storedTheme;
     applyTheme(savedTheme);
 }
 
@@ -95,7 +97,7 @@ function createUserDropdownMenu() {
     const user = getUser();
     if (!user) return '';
     
-    const currentTheme = localStorage.getItem('theme') || 'system';
+    const currentTheme = localStorage.getItem('theme') || 'dark';
     
     return `
         <div class="user-menu-header">
@@ -147,7 +149,7 @@ function initUserDropdown() {
     if (menu) {
         menu.innerHTML = createUserDropdownMenu();
         // Update theme options after rendering
-        const currentTheme = localStorage.getItem('theme') || 'system';
+        const currentTheme = localStorage.getItem('theme') || 'dark';
         updateThemeOptions(currentTheme);
     }
 }
